@@ -1,9 +1,7 @@
 /**
  * UK Carbon Intensity Card for Home Assistant
  *
- * A custom Lovelace card that displays UK carbon intensity data
- * with a gauge, forecast timeline, and generation mix donut chart.
- *
+ * Regional custom card: gauge, 48h forecast timeline, generation mix.
  * Uses Lit (bundled with HA) for rendering. No external dependencies.
  */
 
@@ -77,13 +75,12 @@ class UKCarbonIntensityCard extends HTMLElement {
   setConfig(config) {
     this._config = config;
     if (!this._config.entity) {
-      // Auto-discover
       this._autoDiscover = true;
     }
   }
 
   getCardSize() {
-    return 6;
+    return 8;
   }
 
   _getEntity() {
@@ -99,15 +96,6 @@ class UKCarbonIntensityCard extends HTMLElement {
       if (key) return this._hass.states[key];
     }
     return null;
-  }
-
-  _getNationalEntity() {
-    if (!this._hass) return null;
-    const key = Object.keys(this._hass.states).find(
-      (e) =>
-        e.startsWith("sensor.") && e.endsWith("_national_carbon_intensity")
-    );
-    return key ? this._hass.states[key] : null;
   }
 
   _render() {
@@ -138,15 +126,10 @@ class UKCarbonIntensityCard extends HTMLElement {
 
     const attrs = entity.attributes || {};
     const intensity = parseInt(entity.state, 10);
-    const index = attrs.region
-      ? this._getRegionalIndex()
-      : "";
+    const index = this._getRegionalIndex();
     const region = attrs.region || "";
     const forecast = attrs.forecast || [];
     const generationmix = attrs.generationmix || [];
-    const national = this._getNationalEntity();
-    const nationalIntensity = national ? parseInt(national.state, 10) : null;
-    const nationalIndex = this._getNationalIndex();
 
     // Compute low-carbon and fossil percentages
     const lowCarbonFuels = ["wind", "solar", "nuclear", "hydro", "biomass"];
@@ -171,15 +154,7 @@ class UKCarbonIntensityCard extends HTMLElement {
         <style>${this._getStyles()}</style>
         <div class="card-content">
           ${this._renderHeader(region)}
-          ${this._renderGaugeRow(
-            intensity,
-            index,
-            nationalIntensity,
-            nationalIndex,
-            lowestPeriod,
-            lowCarbon,
-            fossil
-          )}
+          ${this._renderGaugeRow(intensity, index, lowestPeriod, lowCarbon, fossil)}
           ${forecast.length > 0 ? this._renderForecast(forecast) : ""}
           ${generationmix.length > 0 ? this._renderGenerationMix(generationmix) : ""}
         </div>
@@ -191,14 +166,6 @@ class UKCarbonIntensityCard extends HTMLElement {
     if (!this._hass) return "";
     const key = Object.keys(this._hass.states).find(
       (e) => e.startsWith("sensor.") && e.endsWith("_regional_carbon_index")
-    );
-    return key ? this._hass.states[key].state : "";
-  }
-
-  _getNationalIndex() {
-    if (!this._hass) return "";
-    const key = Object.keys(this._hass.states).find(
-      (e) => e.startsWith("sensor.") && e.endsWith("_national_carbon_index")
     );
     return key ? this._hass.states[key].state : "";
   }
@@ -433,31 +400,19 @@ class UKCarbonIntensityCard extends HTMLElement {
                  M12,20c-4.41,0-8-3.59-8-8s3.59-8,8-8,8,3.59,8,8-3.59,8-8,8Z
                  M12.5,7H11v6l5.25,3.15.75-1.23-4.5-2.67Z"/>
           </svg>
-          UK Carbon Intensity
+          Regional Carbon Intensity
         </div>
         ${region ? `<span class="region-label">${region}</span>` : ""}
       </div>
     `;
   }
 
-  _renderGaugeRow(
-    intensity,
-    index,
-    nationalIntensity,
-    nationalIndex,
-    lowestPeriod,
-    lowCarbon,
-    fossil
-  ) {
+  _renderGaugeRow(intensity, index, lowestPeriod, lowCarbon, fossil) {
     const color = getIntensityColor(index);
     const gauge = this._renderGaugeSVG(intensity, index, color);
 
-    const natBadge =
-      nationalIntensity !== null
-        ? `<span class="stat-badge" style="background:${getIntensityColor(nationalIndex)}">${formatIndex(nationalIndex)}</span>`
-        : "";
     const lowestText = lowestPeriod
-      ? `${lowestPeriod.forecast} at ${formatTime(lowestPeriod.from)}`
+      ? `${lowestPeriod.forecast} gCO2 at ${formatTime(lowestPeriod.from)}`
       : "N/A";
     const lowestBadge = lowestPeriod
       ? `<span class="stat-badge" style="background:${getIntensityColor(lowestPeriod.index)}">${formatIndex(lowestPeriod.index)}</span>`
@@ -468,12 +423,7 @@ class UKCarbonIntensityCard extends HTMLElement {
         <div class="gauge-container">${gauge}</div>
         <div class="stats-panel">
           <div class="stat-row">
-            <span class="stat-label">National:</span>
-            <strong>${nationalIntensity !== null ? nationalIntensity : "N/A"}</strong>
-            ${natBadge}
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Lowest:</span>
+            <span class="stat-label">Best window:</span>
             <strong>${lowestText}</strong>
             ${lowestBadge}
           </div>
@@ -493,7 +443,6 @@ class UKCarbonIntensityCard extends HTMLElement {
   }
 
   _renderGaugeSVG(value, index, color) {
-    // Arc gauge: 180-degree arc from -90 to 90
     const maxVal = 500;
     const clamped = Math.min(Math.max(value, 0), maxVal);
     const pct = clamped / maxVal;
@@ -501,7 +450,6 @@ class UKCarbonIntensityCard extends HTMLElement {
     const cx = 60;
     const cy = 60;
 
-    // Arc path helper (SVG arc from startAngle to endAngle in degrees)
     const arcPath = (startDeg, endDeg, radius) => {
       const startRad = ((startDeg - 90) * Math.PI) / 180;
       const endRad = ((endDeg - 90) * Math.PI) / 180;
@@ -513,7 +461,6 @@ class UKCarbonIntensityCard extends HTMLElement {
       return `M ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2}`;
     };
 
-    // Background arc: -135 to 135 (270 degrees)
     const startAngle = -135;
     const endAngle = 135;
     const range = endAngle - startAngle;
@@ -521,11 +468,9 @@ class UKCarbonIntensityCard extends HTMLElement {
 
     return `
       <svg width="120" height="90" viewBox="0 0 120 90">
-        <!-- Background arc -->
         <path d="${arcPath(startAngle, endAngle, r)}"
               fill="none" stroke="var(--ci-divider)" stroke-width="8"
               stroke-linecap="round"/>
-        <!-- Value arc -->
         ${
           pct > 0
             ? `<path d="${arcPath(startAngle, valueAngle, r)}"
@@ -533,11 +478,9 @@ class UKCarbonIntensityCard extends HTMLElement {
               stroke-linecap="round"/>`
             : ""
         }
-        <!-- Value text -->
         <text x="${cx}" y="${cy - 4}" text-anchor="middle"
               font-size="22" font-weight="700"
               fill="var(--ci-text)">${value}</text>
-        <!-- Index label -->
         <text x="${cx}" y="${cy + 14}" text-anchor="middle"
               font-size="11" font-weight="500"
               fill="${color}">${formatIndex(index)}</text>
@@ -547,8 +490,6 @@ class UKCarbonIntensityCard extends HTMLElement {
 
   _renderForecast(forecast) {
     const maxVal = Math.max(...forecast.map((p) => p.forecast), 100);
-
-    // Find the lowest forecast value to highlight best windows
     const lowestVal = Math.min(...forecast.map((p) => p.forecast));
 
     // Group periods by day
@@ -597,7 +538,6 @@ class UKCarbonIntensityCard extends HTMLElement {
   }
 
   _renderForecastChart(forecast, maxVal) {
-    // Compact bar chart overview
     const svgW = 480;
     const svgH = 60;
     const barGap = 1;
@@ -617,7 +557,6 @@ class UKCarbonIntensityCard extends HTMLElement {
       bars += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="${col}" rx="1"/>`;
     }
 
-    // Day boundary labels
     let labels = "";
     let prevDay = "";
     for (let i = 0; i < n; i++) {
@@ -644,7 +583,6 @@ class UKCarbonIntensityCard extends HTMLElement {
   }
 
   _renderGenerationMix(generationmix) {
-    // Sort by percentage descending, filter to non-zero
     const sorted = FUEL_ORDER
       .map((fuel) => {
         const match = generationmix.find((g) => g.fuel === fuel);
@@ -673,7 +611,7 @@ class UKCarbonIntensityCard extends HTMLElement {
 
     return `
       <div class="section">
-        <div class="section-title">Generation Mix</div>
+        <div class="section-title">Regional Generation Mix</div>
         <div class="mix-row">
           <div class="donut-container">${donut}</div>
           <div class="mix-legend">${legendItems}</div>
@@ -729,7 +667,7 @@ class UKCarbonIntensityCard extends HTMLElement {
   }
 }
 
-// Card editor for the visual editor
+// Card editor
 class UKCarbonIntensityCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
@@ -793,9 +731,9 @@ customElements.define(
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "uk-carbon-intensity-card",
-  name: "UK Carbon Intensity",
+  name: "UK Carbon Intensity (Regional)",
   description:
-    "Displays UK carbon intensity with gauge, forecast timeline, and generation mix.",
+    "Regional carbon intensity with gauge, 48h forecast timeline, and generation mix.",
   preview: true,
   documentationURL:
     "https://www.home-assistant.io/integrations/uk_carbon_intensity",
