@@ -111,11 +111,11 @@ class UKCarbonIntensityCard extends HTMLElement {
   }
 
   _render() {
-    const entity = this._getEntity();
-
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
     }
+
+    const entity = this._getEntity();
 
     if (!entity || entity.state === "unavailable" || entity.state === "unknown") {
       this.shadowRoot.innerHTML = `
@@ -294,6 +294,83 @@ class UKCarbonIntensityCard extends HTMLElement {
         width: 100%;
         display: block;
       }
+      .forecast-detail {
+        max-height: 320px;
+        overflow-y: auto;
+        margin-top: 8px;
+        scrollbar-width: thin;
+      }
+      .forecast-day-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--ci-text);
+        padding: 6px 0 2px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        border-bottom: 1px solid var(--ci-divider);
+        margin-bottom: 2px;
+        position: sticky;
+        top: 0;
+        background: var(--ci-bg);
+        z-index: 1;
+      }
+      .forecast-row {
+        display: flex;
+        align-items: center;
+        padding: 3px 0;
+        font-size: 12px;
+        gap: 8px;
+      }
+      .forecast-row.best-window {
+        background: rgba(27, 158, 119, 0.1);
+        border-radius: 4px;
+        padding: 3px 4px;
+      }
+      .forecast-time {
+        width: 90px;
+        flex-shrink: 0;
+        color: var(--ci-text-secondary);
+        font-variant-numeric: tabular-nums;
+      }
+      .forecast-bar-bg {
+        flex: 1;
+        height: 14px;
+        background: var(--ci-divider);
+        border-radius: 3px;
+        overflow: hidden;
+        position: relative;
+      }
+      .forecast-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s;
+      }
+      .forecast-value {
+        width: 32px;
+        flex-shrink: 0;
+        text-align: right;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        color: var(--ci-text);
+      }
+      .forecast-index-badge {
+        width: 62px;
+        flex-shrink: 0;
+        text-align: center;
+        font-size: 10px;
+        font-weight: 500;
+        color: #fff;
+        padding: 1px 4px;
+        border-radius: 6px;
+        white-space: nowrap;
+      }
+      .forecast-best-label {
+        font-size: 9px;
+        font-weight: 600;
+        color: #1B9E77;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
       .mix-row {
         display: flex;
         align-items: flex-start;
@@ -469,15 +546,65 @@ class UKCarbonIntensityCard extends HTMLElement {
   }
 
   _renderForecast(forecast) {
-    // Bar chart: each period is a bar colored by index
+    const maxVal = Math.max(...forecast.map((p) => p.forecast), 100);
+
+    // Find the lowest forecast value to highlight best windows
+    const lowestVal = Math.min(...forecast.map((p) => p.forecast));
+
+    // Group periods by day
+    const days = {};
+    for (const p of forecast) {
+      const d = new Date(p.from);
+      const key = d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      if (!days[key]) days[key] = [];
+      days[key].push(p);
+    }
+
+    let rows = "";
+    for (const [dayLabel, periods] of Object.entries(days)) {
+      rows += `<div class="forecast-day-label">${dayLabel}</div>`;
+      for (const p of periods) {
+        const from = formatTime(p.from);
+        const to = formatTime(p.to);
+        const col = getIntensityColor(p.index);
+        const barPct = (p.forecast / maxVal) * 100;
+        const isBest = p.forecast === lowestVal;
+        const rowClass = isBest ? "forecast-row best-window" : "forecast-row";
+
+        rows += `
+          <div class="${rowClass}">
+            <span class="forecast-time">${from} - ${to}</span>
+            <div class="forecast-bar-bg">
+              <div class="forecast-bar-fill" style="width:${barPct}%;background:${col}"></div>
+            </div>
+            <span class="forecast-value">${p.forecast}</span>
+            <span class="forecast-index-badge" style="background:${col}">${formatIndex(p.index)}</span>
+            ${isBest ? '<span class="forecast-best-label">Best</span>' : ""}
+          </div>
+        `;
+      }
+    }
+
+    return `
+      <div class="section">
+        <div class="section-title">48h Forecast</div>
+        ${this._renderForecastChart(forecast, maxVal)}
+        <div class="forecast-detail">
+          ${rows}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderForecastChart(forecast, maxVal) {
+    // Compact bar chart overview
     const svgW = 480;
-    const svgH = 80;
+    const svgH = 60;
     const barGap = 1;
     const n = forecast.length;
     const barW = Math.max((svgW - (n - 1) * barGap) / n, 2);
-    const maxVal = Math.max(...forecast.map((p) => p.forecast), 100);
     const topPad = 4;
-    const bottomPad = 18;
+    const bottomPad = 14;
     const chartH = svgH - topPad - bottomPad;
 
     let bars = "";
@@ -490,28 +617,28 @@ class UKCarbonIntensityCard extends HTMLElement {
       bars += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="${col}" rx="1"/>`;
     }
 
-    // Time labels (show ~5 evenly spaced)
+    // Day boundary labels
     let labels = "";
-    const labelCount = Math.min(6, n);
-    const step = Math.floor(n / labelCount);
-    for (let i = 0; i < n; i += step) {
-      const p = forecast[i];
-      const x = i * (barW + barGap) + barW / 2;
-      labels += `<text x="${x}" y="${svgH - 2}" text-anchor="middle"
-                       font-size="9" fill="var(--ci-text-secondary)">${formatTime(p.from)}</text>`;
+    let prevDay = "";
+    for (let i = 0; i < n; i++) {
+      const d = new Date(forecast[i].from);
+      const day = d.toLocaleDateString([], { weekday: "short" });
+      if (day !== prevDay) {
+        const x = i * (barW + barGap) + barW / 2;
+        labels += `<text x="${x}" y="${svgH - 1}" text-anchor="start"
+                         font-size="9" font-weight="500" fill="var(--ci-text-secondary)">${day}</text>`;
+        prevDay = day;
+      }
     }
 
     const totalW = n * (barW + barGap) - barGap;
 
     return `
-      <div class="section">
-        <div class="section-title">24h Forecast</div>
-        <div class="forecast-chart">
-          <svg viewBox="0 0 ${totalW} ${svgH}" preserveAspectRatio="none">
-            ${bars}
-            ${labels}
-          </svg>
-        </div>
+      <div class="forecast-chart">
+        <svg viewBox="0 0 ${totalW} ${svgH}" preserveAspectRatio="none">
+          ${bars}
+          ${labels}
+        </svg>
       </div>
     `;
   }

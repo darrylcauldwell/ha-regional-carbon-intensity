@@ -89,7 +89,7 @@ class UKCarbonIntensityCoordinator(DataUpdateCoordinator[UKCarbonIntensityData])
         results = await asyncio.gather(
             self.client.get_national_intensity(),
             self.client.get_generation_mix(),
-            self.client.get_regional_forecast(postcode),
+            self.client.get_regional_forecast(postcode, hours=48),
             return_exceptions=True,
         )
 
