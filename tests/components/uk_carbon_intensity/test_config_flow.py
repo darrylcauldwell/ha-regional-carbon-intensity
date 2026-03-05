@@ -12,7 +12,11 @@ from aioukcarbon import (
 )
 
 from homeassistant import config_entries
-from homeassistant.components.uk_carbon_intensity.const import CONF_POSTCODE, DOMAIN
+from homeassistant.components.uk_carbon_intensity.const import (
+    CONF_POSTCODE,
+    CONF_UPDATE_INTERVAL,
+    DOMAIN,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
@@ -175,111 +179,12 @@ async def test_user_flow_already_configured(
     assert result["reason"] == "already_configured"
 
 
-async def test_reconfigure_flow_success(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_config_flow_client: AsyncMock,
-) -> None:
-    """Test successful reconfigure flow."""
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_POSTCODE: "SW1"},
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data[CONF_POSTCODE] == "SW1"
-
-
-async def test_reconfigure_flow_invalid_postcode(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-) -> None:
-    """Test reconfigure with invalid postcode."""
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_POSTCODE: "INVALID"},
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_postcode"}
-
-
-async def test_reconfigure_flow_cannot_connect(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_config_flow_client: AsyncMock,
-) -> None:
-    """Test reconfigure with connection error."""
-    mock_config_flow_client.get_regional_intensity.side_effect = (
-        CarbonIntensityConnectionError("Connection failed")
-    )
-
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_POSTCODE: "SW1"},
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
-
-
-async def test_reconfigure_flow_no_data(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_config_flow_client: AsyncMock,
-) -> None:
-    """Test reconfigure with no data error."""
-    mock_config_flow_client.get_regional_intensity.side_effect = (
-        CarbonIntensityNoDataError("No data")
-    )
-
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_POSTCODE: "ZZ9"},
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "no_data"}
-
-
-async def test_reconfigure_flow_unknown_error(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_config_flow_client: AsyncMock,
-) -> None:
-    """Test reconfigure with unexpected error."""
-    mock_config_flow_client.get_regional_intensity.side_effect = RuntimeError(
-        "Unexpected"
-    )
-
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_POSTCODE: "SW1"},
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "unknown"}
-
-
 async def test_options_flow(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
     mock_client: AsyncMock,
 ) -> None:
-    """Test options flow sets update interval."""
+    """Test options flow sets update interval and keeps postcode."""
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
@@ -291,8 +196,55 @@ async def test_options_flow(
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {"update_interval": 15},
+        {CONF_POSTCODE: "DE45", CONF_UPDATE_INTERVAL: 15},
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert mock_config_entry.options == {"update_interval": 15}
+    assert mock_config_entry.options == {CONF_UPDATE_INTERVAL: 15}
+    assert mock_config_entry.data[CONF_POSTCODE] == "DE45"
+
+
+async def test_options_flow_change_postcode(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    mock_config_flow_client: AsyncMock,
+) -> None:
+    """Test options flow updates postcode and title."""
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(
+        mock_config_entry.entry_id
+    )
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_POSTCODE: "SW1", CONF_UPDATE_INTERVAL: 30},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert mock_config_entry.data[CONF_POSTCODE] == "SW1"
+    assert mock_config_entry.title == "Carbon Intensity (SW1)"
+
+
+async def test_options_flow_invalid_postcode(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+) -> None:
+    """Test options flow rejects invalid postcode."""
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(
+        mock_config_entry.entry_id
+    )
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_POSTCODE: "INVALID", CONF_UPDATE_INTERVAL: 30},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_postcode"}

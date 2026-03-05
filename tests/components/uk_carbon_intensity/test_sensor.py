@@ -289,3 +289,45 @@ async def test_sensor_fossil_percentage(
     assert state is not None
     # gas(60.2) + coal(0.0) = 60.2
     assert state.state == "60.2"
+
+
+async def test_sensor_regional_comparison(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+) -> None:
+    """Test regional comparison sensor state is lowest current intensity."""
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.uk_carbon_intensity_regional_comparison")
+    assert state is not None
+    # Lowest of North Scotland(5) and East Midlands(261) = 5
+    assert state.state == "5"
+
+
+async def test_sensor_regional_comparison_attributes(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+) -> None:
+    """Test regional comparison sensor attributes."""
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.uk_carbon_intensity_regional_comparison")
+    assert state is not None
+    attrs = state.attributes
+
+    assert attrs["user_region"] == "East Midlands"
+    assert attrs["user_regionid"] == 9
+    assert isinstance(attrs["regions"], list)
+    assert len(attrs["regions"]) == 2
+
+    # Check North Scotland entry
+    r1 = next(r for r in attrs["regions"] if r["regionid"] == 1)
+    assert r1["shortname"] == "North Scotland"
+    assert r1["current"] == 5
+    assert r1["index"] == "very low"
+    assert r1["avg_24h"] == 5.3
+    assert r1["avg_48h"] == 5.3

@@ -20,6 +20,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 URL_BASE = "/uk_carbon_intensity"
 CARD_URL = f"{URL_BASE}/uk-carbon-intensity-card.js"
+COMPARISON_CARD_URL = f"{URL_BASE}/uk-carbon-comparison-card.js"
 
 
 async def async_setup_entry(
@@ -76,3 +77,4 @@ async def _async_register_card(hass: HomeAssistant) -> None:
         [StaticPathConfig(URL_BASE, frontend_path, False)]
     )
     add_extra_js_url(hass, CARD_URL)
+    add_extra_js_url(hass, COMPARISON_CARD_URL)

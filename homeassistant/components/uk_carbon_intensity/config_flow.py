@@ -18,7 +18,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import CONF_POSTCODE, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, DOMAIN
@@ -34,6 +34,32 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
+async def _validate_postcode(
+    hass: HomeAssistant, postcode: str
+) -> dict[str, str]:
+    """Validate a postcode against the API. Returns errors dict."""
+    errors: dict[str, str] = {}
+
+    normalized = postcode.strip().upper()
+    if not POSTCODE_REGEX.match(normalized):
+        errors["base"] = "invalid_postcode"
+        return errors
+
+    session = async_get_clientsession(hass)
+    client = CarbonIntensityClient(session=session)
+    try:
+        await client.get_regional_intensity(normalized)
+    except CarbonIntensityNoDataError:
+        errors["base"] = "no_data"
+    except CarbonIntensityConnectionError:
+        errors["base"] = "cannot_connect"
+    except Exception:
+        _LOGGER.exception("Unexpected exception during validation")
+        errors["base"] = "unknown"
+
+    return errors
+
+
 class UKCarbonIntensityConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for UK Carbon Intensity."""
 
@@ -47,31 +73,6 @@ class UKCarbonIntensityConfigFlow(ConfigFlow, domain=DOMAIN):
         """Create the options flow."""
         return UKCarbonIntensityOptionsFlow()
 
-    async def _validate_postcode(
-        self, postcode: str
-    ) -> dict[str, str]:
-        """Validate a postcode against the API. Returns errors dict."""
-        errors: dict[str, str] = {}
-
-        normalized = postcode.strip().upper()
-        if not POSTCODE_REGEX.match(normalized):
-            errors["base"] = "invalid_postcode"
-            return errors
-
-        session = async_get_clientsession(self.hass)
-        client = CarbonIntensityClient(session=session)
-        try:
-            await client.get_regional_intensity(normalized)
-        except CarbonIntensityNoDataError:
-            errors["base"] = "no_data"
-        except CarbonIntensityConnectionError:
-            errors["base"] = "cannot_connect"
-        except Exception:
-            _LOGGER.exception("Unexpected exception during config flow")
-            errors["base"] = "unknown"
-
-        return errors
-
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -80,7 +81,7 @@ class UKCarbonIntensityConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             postcode = user_input[CONF_POSTCODE].strip().upper()
-            errors = await self._validate_postcode(postcode)
+            errors = await _validate_postcode(self.hass, postcode)
 
             if not errors:
                 await self.async_set_unique_id(postcode)
@@ -97,29 +98,6 @@ class UKCarbonIntensityConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Handle reconfiguration."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            postcode = user_input[CONF_POSTCODE].strip().upper()
-            errors = await self._validate_postcode(postcode)
-
-            if not errors:
-                return self.async_update_reload_and_abort(
-                    self._get_reconfigure_entry(),
-                    title=f"Carbon Intensity ({postcode})",
-                    data_updates={CONF_POSTCODE: postcode},
-                )
-
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=STEP_USER_DATA_SCHEMA,
-            errors=errors,
-        )
-
 
 class UKCarbonIntensityOptionsFlow(OptionsFlow):
     """Handle options flow for UK Carbon Intensity."""
@@ -128,11 +106,33 @@ class UKCarbonIntensityOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Manage the options."""
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            new_postcode = user_input[CONF_POSTCODE].strip().upper()
+            current_postcode = self.config_entry.data.get(CONF_POSTCODE, "")
+
+            if new_postcode != current_postcode:
+                errors = await _validate_postcode(self.hass, new_postcode)
+
+                if not errors:
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry,
+                        title=f"Carbon Intensity ({new_postcode})",
+                        data={**self.config_entry.data, CONF_POSTCODE: new_postcode},
+                    )
+
+            if not errors:
+                return self.async_create_entry(
+                    data={CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL]},
+                )
 
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_POSTCODE,
+                    default=self.config_entry.data.get(CONF_POSTCODE, ""),
+                ): str,
                 vol.Required(
                     CONF_UPDATE_INTERVAL,
                     default=self.config_entry.options.get(
@@ -142,4 +142,6 @@ class UKCarbonIntensityOptionsFlow(OptionsFlow):
             }
         )
 
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init", data_schema=schema, errors=errors
+        )

@@ -59,6 +59,23 @@ async def async_get_config_entry_diagnostics(
             if data.generation_mix
             else None,
             "forecast": forecast_data,
+            "all_regions": {
+                "region_count": len(data.all_regions.regions),
+                "updated_at": data.all_regions.updated_at,
+                "regions": [
+                    {
+                        "regionid": r.regionid,
+                        "shortname": r.shortname,
+                        "current_forecast": r.current_forecast,
+                        "current_index": r.current_index,
+                        "avg_24h": r.avg_24h,
+                        "avg_48h": r.avg_48h,
+                    }
+                    for r in data.all_regions.regions
+                ],
+            }
+            if data.all_regions
+            else None,
         },
         "validation": {
             "generation_mix_total": gen_total,

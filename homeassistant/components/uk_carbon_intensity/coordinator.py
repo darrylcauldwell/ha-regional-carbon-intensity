@@ -8,6 +8,7 @@ from datetime import timedelta
 import logging
 
 from aioukcarbon import (
+    AllRegionsData,
     CarbonIntensityClient,
     CarbonIntensityConnectionError,
     CarbonIntensityError,
@@ -27,6 +28,28 @@ _LOGGER = logging.getLogger(__name__)
 
 type UKCarbonIntensityConfigEntry = ConfigEntry[UKCarbonIntensityCoordinator]
 
+DNO_REGION_IDS = range(1, 15)  # IDs 1-14 are DNO regions; 15-18 are aggregates
+
+
+@dataclass
+class RegionComparisonEntry:
+    """Comparison data for a single region."""
+
+    regionid: int
+    shortname: str
+    current_forecast: int
+    current_index: str
+    avg_24h: float
+    avg_48h: float
+
+
+@dataclass
+class AllRegionsComparisonData:
+    """Comparison data across all regions."""
+
+    regions: list[RegionComparisonEntry]
+    updated_at: str
+
 
 @dataclass
 class UKCarbonIntensityData:
@@ -36,6 +59,7 @@ class UKCarbonIntensityData:
     national: NationalIntensity | None = None
     generation_mix: NationalGenerationMix | None = None
     forecast: RegionalData | None = None
+    all_regions: AllRegionsComparisonData | None = None
 
 
 class UKCarbonIntensityCoordinator(DataUpdateCoordinator[UKCarbonIntensityData]):
@@ -90,6 +114,8 @@ class UKCarbonIntensityCoordinator(DataUpdateCoordinator[UKCarbonIntensityData])
             self.client.get_national_intensity(),
             self.client.get_generation_mix(),
             self.client.get_regional_forecast(postcode, hours=48),
+            self.client.get_all_regions_current(),
+            self.client.get_all_regions_forecast(hours=48),
             return_exceptions=True,
         )
 
@@ -110,9 +136,90 @@ class UKCarbonIntensityCoordinator(DataUpdateCoordinator[UKCarbonIntensityData])
             _LOGGER.warning("Failed to fetch regional forecast: %s", forecast)
             forecast = previous.forecast if previous else None
 
+        all_regions_current = results[3]
+        all_regions_forecast = results[4]
+        all_regions: AllRegionsComparisonData | None = None
+
+        if isinstance(all_regions_current, BaseException) or isinstance(
+            all_regions_forecast, BaseException
+        ):
+            if isinstance(all_regions_current, BaseException):
+                _LOGGER.warning(
+                    "Failed to fetch all-regions current: %s", all_regions_current
+                )
+            if isinstance(all_regions_forecast, BaseException):
+                _LOGGER.warning(
+                    "Failed to fetch all-regions forecast: %s", all_regions_forecast
+                )
+            all_regions = previous.all_regions if previous else None
+        else:
+            all_regions = self._compute_region_comparison(
+                all_regions_current, all_regions_forecast
+            )
+
         return UKCarbonIntensityData(
             regional=regional,
             national=national,
             generation_mix=generation_mix,
             forecast=forecast,
+            all_regions=all_regions,
+        )
+
+    @staticmethod
+    def _compute_region_comparison(
+        current: AllRegionsData,
+        forecast: AllRegionsData,
+    ) -> AllRegionsComparisonData:
+        """Compute region comparison from current and forecast data."""
+        # Build current intensity map from first period
+        current_map: dict[int, tuple[int, str]] = {}
+        if current.periods:
+            for region in current.periods[0].regions:
+                if region.regionid in DNO_REGION_IDS:
+                    current_map[region.regionid] = (
+                        region.intensity.forecast,
+                        region.intensity.index,
+                    )
+
+        # Build forecast averages per region
+        # 48 periods = 24h, all periods = 48h (96 periods at 30min each)
+        forecast_sums: dict[int, list[int]] = {}
+        shortnames: dict[int, str] = {}
+
+        for period in forecast.periods:
+            for region in period.regions:
+                if region.regionid not in DNO_REGION_IDS:
+                    continue
+                shortnames[region.regionid] = region.shortname
+                forecast_sums.setdefault(region.regionid, []).append(
+                    region.intensity.forecast
+                )
+
+        entries = []
+        for rid in sorted(shortnames):
+            forecasts = forecast_sums.get(rid, [])
+            total = len(forecasts)
+            half = min(total, 48)  # First 48 periods = 24h
+
+            avg_24h = sum(forecasts[:half]) / half if half > 0 else 0.0
+            avg_48h = sum(forecasts) / total if total > 0 else 0.0
+
+            current_forecast, current_index = current_map.get(rid, (0, "unknown"))
+
+            entries.append(
+                RegionComparisonEntry(
+                    regionid=rid,
+                    shortname=shortnames[rid],
+                    current_forecast=current_forecast,
+                    current_index=current_index,
+                    avg_24h=round(avg_24h, 1),
+                    avg_48h=round(avg_48h, 1),
+                )
+            )
+
+        return AllRegionsComparisonData(
+            regions=entries,
+            updated_at=current.periods[0].from_time.isoformat()
+            if current.periods
+            else "",
         )

@@ -94,6 +94,35 @@ def _get_regional_attrs(data: UKCarbonIntensityData) -> dict[str, Any]:
     return attrs
 
 
+def _get_regional_comparison_value(data: UKCarbonIntensityData) -> int | None:
+    """Get the lowest current intensity across all regions."""
+    if not data.all_regions or not data.all_regions.regions:
+        return None
+    return min(r.current_forecast for r in data.all_regions.regions)
+
+
+def _get_regional_comparison_attrs(data: UKCarbonIntensityData) -> dict[str, Any]:
+    """Get extra attributes for the regional comparison sensor."""
+    if not data.all_regions or not data.all_regions.regions:
+        return {}
+    return {
+        "user_region": data.regional.shortname,
+        "user_regionid": data.regional.regionid,
+        "updated_at": data.all_regions.updated_at,
+        "regions": [
+            {
+                "regionid": r.regionid,
+                "shortname": r.shortname,
+                "current": r.current_forecast,
+                "index": r.current_index,
+                "avg_24h": r.avg_24h,
+                "avg_48h": r.avg_48h,
+            }
+            for r in data.all_regions.regions
+        ],
+    }
+
+
 def _get_lowest_forecast_attrs(data: UKCarbonIntensityData) -> dict[str, Any]:
     """Get extra attributes for the lowest forecast sensor."""
     if not data.forecast or not data.forecast.periods:
@@ -260,6 +289,15 @@ SENSOR_DESCRIPTIONS: tuple[UKCarbonIntensitySensorDescription, ...] = (
         entity_registry_enabled_default=False,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: _get_fuel_perc(data, "other"),
+    ),
+    # Regional comparison
+    UKCarbonIntensitySensorDescription(
+        key="regional_comparison",
+        translation_key="regional_comparison",
+        native_unit_of_measurement=CARBON_INTENSITY_UNIT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_get_regional_comparison_value,
+        attrs_fn=_get_regional_comparison_attrs,
     ),
 )
 

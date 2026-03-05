@@ -9,6 +9,6 @@
   "iot_class": "cloud_polling",
   "loggers": ["aioukcarbon"],
   "quality_scale": "bronze",
-  "requirements": ["aioukcarbon==0.1.0"],
+  "requirements": ["aioukcarbon==0.2.0"],
   "version": "0.1.0"
 }

@@ -48,6 +48,9 @@
       },
       "generation_other": {
         "default": "mdi:lightning-bolt"
+      },
+      "regional_comparison": {
+        "default": "mdi:map-marker-multiple"
       }
     }
   }

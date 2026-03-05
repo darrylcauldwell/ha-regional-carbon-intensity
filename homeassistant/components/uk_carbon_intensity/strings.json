@@ -1,8 +1,7 @@
 {
   "config": {
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_service%]",
-      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+      "already_configured": "This postcode is already configured"
     },
     "error": {
       "invalid_postcode": "Invalid UK outward postcode format",
@@ -19,14 +18,6 @@
           "postcode": "The first part of your UK postcode (e.g. DE45, SW1, RG41)"
         },
         "description": "Enter your UK outward postcode to get regional carbon intensity data."
-      },
-      "reconfigure": {
-        "data": {
-          "postcode": "[%key:component::uk_carbon_intensity::config::step::user::data::postcode%]"
-        },
-        "data_description": {
-          "postcode": "[%key:component::uk_carbon_intensity::config::step::user::data_description::postcode%]"
-        }
       }
     }
   },
@@ -34,9 +25,11 @@
     "step": {
       "init": {
         "data": {
+          "postcode": "Outward postcode",
           "update_interval": "Update interval"
         },
         "data_description": {
+          "postcode": "The first part of your UK postcode (e.g. DE45, SW1, RG41)",
           "update_interval": "How often to fetch new data from the Carbon Intensity API (minutes)"
         }
       }
@@ -121,6 +114,10 @@
       "generation_other": {
         "name": "Other generation",
         "description": "Percentage of regional electricity from other sources"
+      },
+      "regional_comparison": {
+        "name": "Regional comparison",
+        "description": "Lowest current carbon intensity across all UK regions"
       }
     }
   },
