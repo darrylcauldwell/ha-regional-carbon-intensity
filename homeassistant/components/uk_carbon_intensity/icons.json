@@ -1,0 +1,54 @@
+{
+  "entity": {
+    "sensor": {
+      "regional_intensity": {
+        "default": "mdi:molecule-co2"
+      },
+      "regional_index": {
+        "default": "mdi:gauge"
+      },
+      "national_intensity": {
+        "default": "mdi:molecule-co2"
+      },
+      "national_index": {
+        "default": "mdi:gauge"
+      },
+      "lowest_forecast_intensity": {
+        "default": "mdi:chart-timeline-variant-shimmer"
+      },
+      "low_carbon_percentage": {
+        "default": "mdi:leaf-circle"
+      },
+      "fossil_percentage": {
+        "default": "mdi:factory"
+      },
+      "generation_wind": {
+        "default": "mdi:wind-turbine"
+      },
+      "generation_solar": {
+        "default": "mdi:solar-power"
+      },
+      "generation_gas": {
+        "default": "mdi:gas-burner"
+      },
+      "generation_nuclear": {
+        "default": "mdi:atom"
+      },
+      "generation_biomass": {
+        "default": "mdi:leaf"
+      },
+      "generation_coal": {
+        "default": "mdi:fire"
+      },
+      "generation_imports": {
+        "default": "mdi:transmission-tower-import"
+      },
+      "generation_hydro": {
+        "default": "mdi:hydro-power"
+      },
+      "generation_other": {
+        "default": "mdi:lightning-bolt"
+      }
+    }
+  }
+}

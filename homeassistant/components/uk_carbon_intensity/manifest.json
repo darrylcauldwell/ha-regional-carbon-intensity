@@ -1,0 +1,14 @@
+{
+  "domain": "uk_carbon_intensity",
+  "name": "UK Carbon Intensity",
+  "codeowners": ["@darrylcauldwell"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http"],
+  "documentation": "https://www.home-assistant.io/integrations/uk_carbon_intensity",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "loggers": ["aioukcarbon"],
+  "quality_scale": "bronze",
+  "requirements": ["aioukcarbon==0.1.0"],
+  "version": "0.1.0"
+}

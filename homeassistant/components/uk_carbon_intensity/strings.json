@@ -1,0 +1,138 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_service%]",
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+    },
+    "error": {
+      "invalid_postcode": "Invalid UK outward postcode format",
+      "no_data": "No carbon intensity data available for this postcode",
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "postcode": "Outward postcode"
+        },
+        "data_description": {
+          "postcode": "The first part of your UK postcode (e.g. DE45, SW1, RG41)"
+        },
+        "description": "Enter your UK outward postcode to get regional carbon intensity data."
+      },
+      "reconfigure": {
+        "data": {
+          "postcode": "[%key:component::uk_carbon_intensity::config::step::user::data::postcode%]"
+        },
+        "data_description": {
+          "postcode": "[%key:component::uk_carbon_intensity::config::step::user::data_description::postcode%]"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "update_interval": "Update interval"
+        },
+        "data_description": {
+          "update_interval": "How often to fetch new data from the Carbon Intensity API (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "regional_intensity": {
+        "name": "Regional carbon intensity",
+        "description": "Current carbon intensity forecast for your region in gCO2eq/kWh"
+      },
+      "regional_index": {
+        "name": "Regional carbon index",
+        "description": "Current carbon intensity index for your region (very low to very high)",
+        "state": {
+          "very_low": "Very low",
+          "low": "Low",
+          "moderate": "Moderate",
+          "high": "High",
+          "very_high": "Very high"
+        }
+      },
+      "national_intensity": {
+        "name": "National carbon intensity",
+        "description": "Current national carbon intensity forecast in gCO2eq/kWh"
+      },
+      "national_index": {
+        "name": "National carbon index",
+        "description": "Current national carbon intensity index (very low to very high)",
+        "state": {
+          "very_low": "Very low",
+          "low": "Low",
+          "moderate": "Moderate",
+          "high": "High",
+          "very_high": "Very high"
+        }
+      },
+      "lowest_forecast_intensity": {
+        "name": "Lowest forecast intensity",
+        "description": "Lowest carbon intensity in the 24-hour regional forecast"
+      },
+      "low_carbon_percentage": {
+        "name": "Low carbon percentage",
+        "description": "Combined percentage of wind, solar, nuclear, and hydro generation"
+      },
+      "fossil_percentage": {
+        "name": "Fossil fuel percentage",
+        "description": "Combined percentage of gas and coal generation"
+      },
+      "generation_wind": {
+        "name": "Wind generation",
+        "description": "Percentage of regional electricity generated from wind"
+      },
+      "generation_solar": {
+        "name": "Solar generation",
+        "description": "Percentage of regional electricity generated from solar"
+      },
+      "generation_gas": {
+        "name": "Gas generation",
+        "description": "Percentage of regional electricity generated from gas"
+      },
+      "generation_nuclear": {
+        "name": "Nuclear generation",
+        "description": "Percentage of regional electricity generated from nuclear"
+      },
+      "generation_biomass": {
+        "name": "Biomass generation",
+        "description": "Percentage of regional electricity generated from biomass"
+      },
+      "generation_coal": {
+        "name": "Coal generation",
+        "description": "Percentage of regional electricity generated from coal"
+      },
+      "generation_imports": {
+        "name": "Imports generation",
+        "description": "Percentage of regional electricity from interconnector imports"
+      },
+      "generation_hydro": {
+        "name": "Hydro generation",
+        "description": "Percentage of regional electricity generated from hydro"
+      },
+      "generation_other": {
+        "name": "Other generation",
+        "description": "Percentage of regional electricity from other sources"
+      }
+    }
+  },
+  "exceptions": {
+    "timeout_error": {
+      "message": "Timeout connecting to Carbon Intensity API"
+    },
+    "connection_error": {
+      "message": "Error connecting to Carbon Intensity API"
+    },
+    "update_error": {
+      "message": "Error fetching carbon intensity data: {error}"
+    }
+  }
+}
