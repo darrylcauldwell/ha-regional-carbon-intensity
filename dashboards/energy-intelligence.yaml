@@ -1,0 +1,312 @@
+# Energy Intelligence Dashboard
+#
+# Multi-integration dashboard correlating Octopus Energy rates/costs/carbon,
+# SolaX inverter data, and UK Carbon Intensity forecasts.
+#
+# Entity placeholders replaced at deploy time by scripts/deploy_energy_intelligence.py:
+#   OCTOPUS_IMPORT_*  — Electricity import meter sensors
+#   OCTOPUS_EXPORT_*  — Electricity export meter sensors
+#   OCTOPUS_GAS_*     — Gas meter sensors
+#   OCTOPUS_ENTRY_*   — Entry-level sensors (tariff_comparison, solar_estimate, carbon_correlation)
+#   SOLAX_*           — SolaX inverter sensors
+#   Carbon intensity entities use fixed names (no placeholders needed)
+
+views:
+  - title: Energy Intelligence
+    path: energy-intelligence
+    icon: mdi:flash-alert
+    cards:
+      # ── Section 1: Right Now ──────────────────────────────────────────
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Right Now"
+
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.octopus_energy_OCTOPUS_IMPORT_current_rate
+                name: Import Rate
+                unit: p/kWh
+                needle: true
+                min: 0
+                max: 50
+                segments:
+                  - from: 0
+                    color: green
+                  - from: 10
+                    color: amber
+                  - from: 25
+                    color: red
+
+              - type: gauge
+                entity: sensor.uk_carbon_intensity_national_carbon_intensity
+                name: Grid Carbon
+                unit: gCO2/kWh
+                needle: true
+                min: 0
+                max: 400
+                segments:
+                  - from: 0
+                    color: green
+                  - from: 150
+                    color: amber
+                  - from: 250
+                    color: red
+
+              - type: gauge
+                entity: sensor.SOLAX_battery_state_of_charge
+                name: Battery SOC
+                unit: "%"
+                needle: true
+                min: 0
+                max: 100
+                segments:
+                  - from: 0
+                    color: red
+                  - from: 20
+                    color: amber
+                  - from: 50
+                    color: green
+
+          - type: markdown
+            title: Smart Status
+            content: >
+              {% set rate = states('sensor.octopus_energy_OCTOPUS_IMPORT_current_rate') | float(0) %}
+              {% set carbon_index = states('sensor.uk_carbon_intensity_national_carbon_index') %}
+              {% set battery_soc = states('sensor.SOLAX_battery_state_of_charge') | float(0) %}
+              {% set grid_power = states('sensor.SOLAX_grid_power') | float(0) %}
+              {% set pv1 = states('sensor.SOLAX_pv1_power') | float(0) %}
+              {% set pv2 = states('sensor.SOLAX_pv2_power') | float(0) %}
+              {% set pv_total = pv1 + pv2 %}
+              {% if grid_power < -100 %}
+              **Exporting solar surplus** ({{ (grid_power | abs) | round(0) | int }}W to grid)
+              {% elif pv_total > 500 and battery_soc < 95 %}
+              **Charging battery from solar** ({{ pv_total | round(0) | int }}W PV)
+              {% elif rate > 25 and battery_soc > 20 %}
+              **Expensive period** — using battery ({{ battery_soc | round(0) | int }}% SOC)
+              {% elif carbon_index in ['high', 'very high'] %}
+              **High carbon grid** — defer heavy loads if possible
+              {% elif rate < 10 %}
+              **Cheap period** — good time for high-demand tasks
+              {% elif carbon_index in ['low', 'very low'] %}
+              **Clean grid** — carbon intensity is {{ carbon_index }}
+              {% else %}
+              **Normal operation** — {{ rate | round(1) }}p/kWh, carbon {{ carbon_index }}
+              {% endif %}
+
+          - type: entities
+            title: Current Readings
+            entities:
+              - entity: sensor.octopus_energy_OCTOPUS_IMPORT_current_rate
+                name: Import rate
+              - entity: sensor.octopus_energy_OCTOPUS_IMPORT_next_rate
+                name: Next rate
+              - entity: sensor.octopus_energy_OCTOPUS_EXPORT_export_current_rate
+                name: Export rate
+              - entity: sensor.uk_carbon_intensity_national_carbon_index
+                name: Carbon index
+              - entity: sensor.SOLAX_battery_power
+                name: Battery power
+              - entity: sensor.SOLAX_grid_power
+                name: Grid power
+
+      # ── Section 2: Yesterday's Review ──────────────────────────────────
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Yesterday's Review"
+
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.octopus_energy_OCTOPUS_IMPORT_previous_consumption
+                name: Consumption
+              - type: entity
+                entity: sensor.octopus_energy_OCTOPUS_IMPORT_previous_cost
+                name: Cost
+              - type: entity
+                entity: sensor.octopus_energy_OCTOPUS_ENTRY_carbon_correlation
+                name: Carbon Avg
+
+          - type: markdown
+            title: Carbon Analysis
+            content: >
+              {% set carbon = state_attr('sensor.octopus_energy_OCTOPUS_ENTRY_carbon_correlation', 'carbon_summary') %}
+              {% if carbon %}
+              | Metric | Value |
+              |--------|-------|
+              | **Total CO2** | {{ carbon.total_grams_co2 | round(0) | int }}g ({{ (carbon.total_grams_co2 / 1000) | round(2) }}kg) |
+              | **Avg intensity** | {{ carbon.weighted_avg_intensity }}gCO2/kWh |
+              | **High-carbon usage** | {{ carbon.high_carbon_kwh }}kWh ({{ carbon.high_carbon_pct }}%) |
+              | **Low-carbon usage** | {{ carbon.low_carbon_kwh }}kWh ({{ carbon.low_carbon_pct }}%) |
+              {% else %}
+              *Carbon analysis will appear once the integration loads with consumption and carbon data.*
+              {% endif %}
+
+          - type: markdown
+            title: Optimization Insights
+            content: >
+              {% set opt = state_attr('sensor.octopus_energy_OCTOPUS_ENTRY_carbon_correlation', 'optimization') %}
+              {% if opt and opt.cheapest_2h_window is defined %}
+              {% set cheap = opt.cheapest_2h_window %}
+              {% set green = opt.greenest_2h_window %}
+              **Cheapest 2h window yesterday:** {{ cheap.start[11:16] }}–{{ cheap.end[11:16] }} (avg {{ cheap.avg_rate }}p/kWh)
+
+              **Greenest 2h window yesterday:** {{ green.start[11:16] }}–{{ green.end[11:16] }} (avg {{ green.avg_intensity }}gCO2/kWh)
+
+              {% if cheap.start != green.start %}
+              *The cheapest and greenest windows differed — consider prioritising carbon or cost
+              depending on your goals.*
+              {% else %}
+              *The cheapest window was also the greenest — optimal alignment!*
+              {% endif %}
+              {% else %}
+              *Optimization data will appear once the carbon correlation sensor has data.*
+              {% endif %}
+
+          - type: markdown
+            title: Net Cost
+            content: >
+              {% set import_cost = states('sensor.octopus_energy_OCTOPUS_IMPORT_previous_cost') %}
+              {% set has_data = import_cost not in ['unknown', 'unavailable'] %}
+              {% if has_data %}
+              {% set ic = import_cost | float(0) %}
+              {% set export_revenue = states('sensor.octopus_energy_OCTOPUS_EXPORT_export_previous_cost') | float(0) %}
+              {% set gas_cost = states('sensor.octopus_energy_OCTOPUS_GAS_gas_previous_cost') | float(0) %}
+              {% set elec_standing = states('sensor.octopus_energy_OCTOPUS_IMPORT_standing_charge') | float(0) / 100 %}
+              {% set gas_standing = states('sensor.octopus_energy_OCTOPUS_GAS_gas_standing_charge') | float(0) / 100 %}
+              {% set net = ic - export_revenue + gas_cost + elec_standing + gas_standing %}
+              **Net daily cost: £{{ '%.2f' | format(net) }}**
+
+              | | |
+              |---|---|
+              | Electricity import | £{{ '%.2f' | format(ic) }} |
+              | Export revenue | -£{{ '%.2f' | format(export_revenue) }} |
+              | Gas | £{{ '%.2f' | format(gas_cost) }} |
+              | Standing charges | £{{ '%.2f' | format(elec_standing + gas_standing) }} |
+              {% else %}
+              *Awaiting yesterday's consumption data.*
+              {% endif %}
+
+      # ── Section 3: Tomorrow's Outlook ──────────────────────────────────
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Tomorrow's Outlook"
+
+          - type: horizontal-stack
+            cards:
+              - type: entity
+                entity: sensor.octopus_energy_OCTOPUS_ENTRY_solar_estimate
+                name: Solar Forecast
+              - type: entity
+                entity: sensor.uk_carbon_intensity_lowest_forecast_intensity
+                name: Lowest Carbon
+
+          - type: markdown
+            title: Recommendation
+            content: >
+              {% set solar = states('sensor.octopus_energy_OCTOPUS_ENTRY_solar_estimate') | float(0) %}
+              {% set lowest_carbon = states('sensor.uk_carbon_intensity_lowest_forecast_intensity') | float(0) %}
+              {% set battery_soc = states('sensor.SOLAX_battery_state_of_charge') | float(0) %}
+              {% if solar > 15 %}
+              **Sunny day ahead** ({{ solar | round(1) }}kWh forecast) — skip overnight charging,
+              solar should cover daytime needs and recharge the battery.
+              {% elif solar > 8 %}
+              **Moderate solar** ({{ solar | round(1) }}kWh forecast) — consider a partial overnight
+              charge to 50% if battery is low, solar will top up the rest.
+              {% elif solar > 0 %}
+              **Low solar** ({{ solar | round(1) }}kWh forecast) — charge battery overnight during
+              the cheapest window for best cost savings.
+              {% else %}
+              *Solar forecast not available. Check integration settings.*
+              {% endif %}
+
+              {% if lowest_carbon < 100 %}
+              Grid will be very clean ({{ lowest_carbon | round(0) | int }}gCO2/kWh) — great time
+              to charge from grid if needed.
+              {% elif lowest_carbon < 200 %}
+              Moderate grid carbon forecast ({{ lowest_carbon | round(0) | int }}gCO2/kWh).
+              {% endif %}
+
+          - type: markdown
+            title: Carbon Forecast
+            content: >
+              {% set current = states('sensor.uk_carbon_intensity_national_carbon_intensity') | float(0) %}
+              {% set index = states('sensor.uk_carbon_intensity_national_carbon_index') %}
+              {% set low_carbon = states('sensor.uk_carbon_intensity_low_carbon_percentage') | float(0) %}
+              {% set fossil = states('sensor.uk_carbon_intensity_fossil_fuel_percentage') | float(0) %}
+              {% set wind = states('sensor.uk_carbon_intensity_wind_generation') | float(0) %}
+              {% set solar_gen = states('sensor.uk_carbon_intensity_solar_generation') | float(0) %}
+              | Metric | Value |
+              |--------|-------|
+              | **Current intensity** | {{ current | round(0) | int }}gCO2/kWh ({{ index }}) |
+              | **Low-carbon generation** | {{ low_carbon | round(1) }}% |
+              | **Fossil fuel** | {{ fossil | round(1) }}% |
+              | **Wind** | {{ wind | round(1) }}% |
+              | **Solar** | {{ solar_gen | round(1) }}% |
+
+      # ── Section 4: Energy Ratios ──────────────────────────────────────
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Energy Ratios"
+
+          - type: markdown
+            title: Self-Consumption & Export
+            content: >
+              {% set import_kwh = states('sensor.octopus_energy_OCTOPUS_IMPORT_previous_consumption') | float(0) %}
+              {% set export_kwh = states('sensor.octopus_energy_OCTOPUS_EXPORT_export_previous_consumption') | float(0) %}
+              {% set pv_today = states('sensor.SOLAX_today_pv_energy') | float(0) %}
+              {% set total_gen = pv_today if pv_today > 0 else 1 %}
+              {% set self_consumed = total_gen - export_kwh if total_gen > export_kwh else 0 %}
+              {% set self_pct = (self_consumed / total_gen * 100) if total_gen > 0 else 0 %}
+              {% set export_pct = (export_kwh / total_gen * 100) if total_gen > 0 else 0 %}
+              {% if pv_today > 0 %}
+              | Metric | Value |
+              |--------|-------|
+              | **PV generated** | {{ pv_today | round(2) }}kWh |
+              | **Self-consumed** | {{ self_consumed | round(2) }}kWh ({{ self_pct | round(0) | int }}%) |
+              | **Exported** | {{ export_kwh | round(2) }}kWh ({{ export_pct | round(0) | int }}%) |
+              | **Grid import** | {{ import_kwh | round(2) }}kWh |
+              {% else %}
+              *PV generation data will appear once the inverter produces energy today.*
+              {% endif %}
+
+          - type: markdown
+            title: Grid Carbon Split
+            content: >
+              {% set low_carbon = states('sensor.uk_carbon_intensity_low_carbon_percentage') | float(0) %}
+              {% set fossil = states('sensor.uk_carbon_intensity_fossil_fuel_percentage') | float(0) %}
+              | Source | Share |
+              |--------|-------|
+              | **Clean energy** | {{ low_carbon | round(1) }}% |
+              | **Fossil fuel** | {{ fossil | round(1) }}% |
+
+      # ── Section 5: Weekly Trends ──────────────────────────────────────
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Weekly Trends"
+
+          - type: statistics-graph
+            title: PV Generation & Consumption (7 days)
+            entities:
+              - entity: sensor.SOLAX_total_pv_energy
+                name: PV Total
+              - entity: sensor.octopus_energy_OCTOPUS_IMPORT_previous_consumption
+                name: Import
+              - entity: sensor.octopus_energy_OCTOPUS_EXPORT_export_previous_consumption
+                name: Export
+            days_to_show: 7
+            stat_types:
+              - change
+            period: day
+
+          - type: history-graph
+            title: Battery SOC (7 days)
+            entities:
+              - entity: sensor.SOLAX_battery_state_of_charge
+                name: Battery SOC
+            hours_to_show: 168
