@@ -17,158 +17,181 @@ views:
     icon: mdi:octagram
     cards:
       # ── Section 1: Right Now ──────────────────────────────────────────
-      - type: markdown
-        content: "## Right Now"
-
-      - type: horizontal-stack
+      - type: vertical-stack
         cards:
-          - type: gauge
-            entity: sensor.octopus_energy_ELECTRICITY_METER_current_rate
-            name: Import Rate
-            unit: p/kWh
-            needle: true
-            min: 0
-            max: 50
-            segments:
-              - from: 0
-                color: green
-              - from: 10
-                color: amber
-              - from: 25
-                color: red
+          - type: markdown
+            content: "## Right Now"
 
-          - type: gauge
-            entity: sensor.octopus_energy_ELECTRICITY_METER_next_rate
-            name: Next Rate
-            unit: p/kWh
-            needle: true
-            min: 0
-            max: 50
-            segments:
-              - from: 0
-                color: green
-              - from: 10
-                color: amber
-              - from: 25
-                color: red
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.octopus_energy_ELECTRICITY_METER_current_rate
+                name: Import Rate
+                unit: p/kWh
+                needle: true
+                min: 0
+                max: 50
+                segments:
+                  - from: 0
+                    color: green
+                  - from: 10
+                    color: amber
+                  - from: 25
+                    color: red
 
-          - type: gauge
-            entity: sensor.octopus_energy_EXPORT_METER_export_current_rate
-            name: Export Rate
-            unit: p/kWh
-            needle: true
-            min: 0
-            max: 30
-            segments:
-              - from: 0
-                color: red
-              - from: 10
-                color: amber
-              - from: 15
-                color: green
+              - type: gauge
+                entity: sensor.octopus_energy_ELECTRICITY_METER_next_rate
+                name: Next Rate
+                unit: p/kWh
+                needle: true
+                min: 0
+                max: 50
+                segments:
+                  - from: 0
+                    color: green
+                  - from: 10
+                    color: amber
+                  - from: 25
+                    color: red
 
-      - type: entities
-        title: Standing Charges
-        entities:
-          - entity: sensor.octopus_energy_ELECTRICITY_METER_standing_charge
-            name: Electricity
-          - entity: sensor.octopus_energy_GAS_METER_gas_standing_charge
-            name: Gas
+              - type: gauge
+                entity: sensor.octopus_energy_EXPORT_METER_export_current_rate
+                name: Export Rate
+                unit: p/kWh
+                needle: true
+                min: 0
+                max: 30
+                segments:
+                  - from: 0
+                    color: red
+                  - from: 10
+                    color: amber
+                  - from: 15
+                    color: green
+
+          - type: entities
+            title: Standing Charges
+            entities:
+              - entity: sensor.octopus_energy_ELECTRICITY_METER_standing_charge
+                name: Electricity
+              - entity: sensor.octopus_energy_GAS_METER_gas_standing_charge
+                name: Gas
 
       # ── Section 2: Yesterday ──────────────────────────────────────────
-      - type: markdown
-        content: "## Yesterday"
-
-      - type: horizontal-stack
+      - type: vertical-stack
         cards:
-          - type: entity
-            entity: sensor.octopus_energy_ELECTRICITY_METER_previous_cost
-            name: Import Cost
-            icon: mdi:currency-gbp
-          - type: entity
-            entity: sensor.octopus_energy_ELECTRICITY_METER_previous_consumption
-            name: Import Usage
-            icon: mdi:flash
-          - type: entity
-            entity: sensor.octopus_energy_EXPORT_METER_export_previous_cost
-            name: Export Revenue
-            icon: mdi:cash-plus
+          - type: markdown
+            content: "## Yesterday"
 
-      - type: horizontal-stack
-        cards:
-          - type: entity
-            entity: sensor.octopus_energy_GAS_METER_gas_previous_cost
-            name: Gas Cost
-            icon: mdi:fire
-          - type: entity
-            entity: sensor.octopus_energy_GAS_METER_gas_previous_consumption
-            name: Gas Usage
-            icon: mdi:meter-gas
+          - type: markdown
+            content: >
+              {% set import_cost = states('sensor.octopus_energy_ELECTRICITY_METER_previous_cost') %}
+              {% set import_kwh = states('sensor.octopus_energy_ELECTRICITY_METER_previous_consumption') %}
+              {% set export_cost = states('sensor.octopus_energy_EXPORT_METER_export_previous_cost') %}
+              {% set gas_cost = states('sensor.octopus_energy_GAS_METER_gas_previous_cost') %}
+              {% set gas_kwh = states('sensor.octopus_energy_GAS_METER_gas_previous_consumption') %}
+              {% set has_data = import_cost not in ['unknown', 'unavailable'] %}
+              {% if has_data %}
+              | | Value |
+              |---|---|
+              | **Electricity import** | {{ import_kwh }} kWh / £{{ import_cost }} |
+              | **Export revenue** | £{{ export_cost }} |
+              | **Gas** | {{ gas_kwh }} kWh / £{{ gas_cost }} |
+              {% else %}
+              *Awaiting yesterday's consumption data from Octopus API.
+              This updates once daily when smart meter readings are available.*
+              {% endif %}
 
-      - type: markdown
-        title: Net Cost
-        content: >
-          {% set import_cost = states('sensor.octopus_energy_ELECTRICITY_METER_previous_cost') | float(0) %}
-          {% set export_revenue = states('sensor.octopus_energy_EXPORT_METER_export_previous_cost') | float(0) %}
-          {% set gas_cost = states('sensor.octopus_energy_GAS_METER_gas_previous_cost') | float(0) %}
-          {% set elec_standing = states('sensor.octopus_energy_ELECTRICITY_METER_standing_charge') | float(0) / 100 %}
-          {% set gas_standing = states('sensor.octopus_energy_GAS_METER_gas_standing_charge') | float(0) / 100 %}
-          {% set net = import_cost - export_revenue + gas_cost + elec_standing + gas_standing %}
-          **Net daily cost: {{ '%.2f' | format(net) }}**
+          - type: markdown
+            title: Net Cost
+            content: >
+              {% set import_cost = states('sensor.octopus_energy_ELECTRICITY_METER_previous_cost') %}
+              {% set has_data = import_cost not in ['unknown', 'unavailable'] %}
+              {% if has_data %}
+              {% set ic = import_cost | float(0) %}
+              {% set export_revenue = states('sensor.octopus_energy_EXPORT_METER_export_previous_cost') | float(0) %}
+              {% set gas_cost = states('sensor.octopus_energy_GAS_METER_gas_previous_cost') | float(0) %}
+              {% set elec_standing = states('sensor.octopus_energy_ELECTRICITY_METER_standing_charge') | float(0) / 100 %}
+              {% set gas_standing = states('sensor.octopus_energy_GAS_METER_gas_standing_charge') | float(0) / 100 %}
+              {% set net = ic - export_revenue + gas_cost + elec_standing + gas_standing %}
+              **Net daily cost: £{{ '%.2f' | format(net) }}**
 
-          | | |
-          |---|---|
-          | Electricity import | {{ '%.2f' | format(import_cost) }} |
-          | Export revenue | -{{ '%.2f' | format(export_revenue) }} |
-          | Gas | {{ '%.2f' | format(gas_cost) }} |
-          | Standing charges | {{ '%.2f' | format(elec_standing + gas_standing) }} |
+              | | |
+              |---|---|
+              | Electricity import | £{{ '%.2f' | format(ic) }} |
+              | Export revenue | -£{{ '%.2f' | format(export_revenue) }} |
+              | Gas | £{{ '%.2f' | format(gas_cost) }} |
+              | Standing charges | £{{ '%.2f' | format(elec_standing + gas_standing) }} |
+              {% else %}
+              **Standing charges only: £{{ '%.2f' | format(
+                (states('sensor.octopus_energy_ELECTRICITY_METER_standing_charge') | float(0) +
+                 states('sensor.octopus_energy_GAS_METER_gas_standing_charge') | float(0)) / 100
+              ) }}/day**
+
+              *Full net cost will appear once consumption data arrives.*
+              {% endif %}
 
       # ── Section 3: Tariff Comparison ──────────────────────────────────
-      - type: markdown
-        content: "## Tariff Comparison"
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Tariff Comparison"
 
-      - type: custom:octopus-tariff-comparison-card
-        entity: sensor.octopus_energy_ACCOUNT_tariff_comparison
+          - type: custom:octopus-tariff-comparison-card
+            entity: sensor.octopus_energy_ACCOUNT_tariff_comparison
 
       # ── Section 4: Solar Forecast ─────────────────────────────────────
-      - type: markdown
-        content: "## Solar Forecast"
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Solar Forecast"
 
-      - type: entity
-        entity: sensor.octopus_energy_ACCOUNT_solar_estimate
-        name: Today's Solar Estimate
-        icon: mdi:solar-power
+          - type: markdown
+            title: Today's Solar Estimate
+            content: >
+              {% set solar = states('sensor.octopus_energy_ACCOUNT_solar_estimate') %}
+              {% if solar not in ['unknown', 'unavailable'] %}
+              **{{ solar }} kWh** estimated today
 
-      - type: markdown
-        title: Hourly Solar Breakdown
-        content: >
-          {% set estimates = state_attr('sensor.octopus_energy_ACCOUNT_solar_estimate', 'hourly_estimates') %}
-          {% if estimates %}
-          | Hour | kWh |
-          |------|-----|
-          {% for e in estimates %}
-          | {{ '%02d' | format(e.hour) }}:00 | {{ '%.2f' | format(e.value) }} |
-          {% endfor %}
-          {% else %}
-          *Solar estimate data unavailable*
-          {% endif %}
+              {% set estimates = state_attr('sensor.octopus_energy_ACCOUNT_solar_estimate', 'hourly_estimates') %}
+              {% if estimates %}
+              | Hour | kWh |
+              |------|-----|
+              {% for e in estimates %}
+              | {{ '%02d' | format(e.hour) }}:00 | {{ '%.2f' | format(e.value) }} |
+              {% endfor %}
+              {% endif %}
+              {% else %}
+              *Solar estimate not configured. Enable the solar estimate in the
+              Octopus Energy integration settings to see forecasts here.*
+              {% endif %}
 
       # ── Section 5: Octopus Recommends ─────────────────────────────────
-      - type: markdown
-        content: "## Octopus Recommends"
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Octopus Recommends"
 
-      - type: markdown
-        title: Smart Comparison
-        content: >
-          {% set comp = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'octopus_comparison') %}
-          {% if comp %}
-          **Your current cost:** {{ '%.2f' | format(comp.current_cost) }}
+          - type: markdown
+            title: Smart Comparison
+            content: >
+              {% set comp = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'octopus_comparison') %}
+              {% if comp %}
+              **Your current cost:** £{{ '%.2f' | format(comp.current_cost) }}
 
-          | Tariff | Estimated Cost |
-          |--------|---------------|
-          {% for alt in comp.alternatives %}
-          | {{ alt.product_code }} | {{ '%.2f' | format(alt.cost) }} |
-          {% endfor %}
-          {% else %}
-          *Octopus comparison data unavailable — check that the integration has fetched comparison data.*
-          {% endif %}
+              | Tariff | Estimated Cost |
+              |--------|---------------|
+              {% for alt in comp.alternatives %}
+              | {{ alt.product_code }} | £{{ '%.2f' | format(alt.cost) }} |
+              {% endfor %}
+              {% else %}
+              {% set tariff_state = states('sensor.octopus_energy_ACCOUNT_tariff_comparison') %}
+              {% if tariff_state in ['unknown', 'unavailable'] %}
+              *Tariff comparison is still loading. The integration needs consumption
+              history to calculate costs across tariffs — this can take up to 24 hours
+              after first setup.*
+              {% else %}
+              *Octopus's own comparison data is not yet available. This populates
+              once the integration fetches comparison data from your Octopus account.*
+              {% endif %}
+              {% endif %}
