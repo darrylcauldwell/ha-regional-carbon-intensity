@@ -28,8 +28,13 @@ Thumbs.db
 # Secrets and credentials
 .env
 .env.*
-.claude/accessToken
+
+# Claude Code
+.claude/
 
 # Project notes (not part of integration)
 energy-metrics.md
 outcome-focussed-dashboards.md
+
+# Temporary debug scripts
+check_octopus_reload*.py

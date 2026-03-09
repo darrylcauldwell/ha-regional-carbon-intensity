@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Deploy the Octopus Energy Intelligence dashboard to Home Assistant.
+"""Deploy the Energy Intelligence dashboard to Home Assistant.
 
-Connects via WebSocket, discovers octopus_energy entity IDs, substitutes
-them into the dashboard template, and pushes via lovelace/dashboards/create
+Connects via WebSocket, discovers entities from multiple integrations
+(Octopus Energy, SolaX, UK Carbon Intensity), substitutes placeholders
+in the dashboard template, and pushes via lovelace/dashboards/create
 + lovelace/config/save.
 
 Usage:
-    python3 scripts/deploy_dashboard.py
+    python3 scripts/deploy_energy_intelligence.py
 
 Requires: pip install websockets pyyaml
 """
@@ -32,38 +33,45 @@ except ImportError:
     sys.exit(1)
 
 HA_URL = "ws://192.168.1.227:8123/api/websocket"
-DASHBOARD_URL_PATH = "octopus-energy"
-DASHBOARD_TITLE = "Octopus Energy"
-DASHBOARD_ICON = "mdi:octagram"
+DASHBOARD_URL_PATH = "energy-intelligence"
+DASHBOARD_TITLE = "Energy Intelligence"
+DASHBOARD_ICON = "mdi:flash-alert"
 
-# Placeholder entity IDs used in the dashboard template YAML.
-# Each maps to a suffix regex that identifies the real entity.
-# The regex matches against the full entity_id (after "sensor.octopus_energy_").
-ENTITY_MAP = {
+# Octopus Energy entity placeholders (same prefix pattern as deploy_dashboard.py)
+OCTOPUS_PREFIX = "sensor.octopus_energy_"
+OCTOPUS_MAP = {
     # Electricity import
-    "ELECTRICITY_METER_current_rate": r"(?!.*export).*_current_rate$",
-    "ELECTRICITY_METER_next_rate": r"(?!.*export).*_next_rate$",
-    "ELECTRICITY_METER_previous_consumption": r"(?!.*export).*(?<!gas)_previous_consumption$",
-    "ELECTRICITY_METER_previous_cost": r"(?!.*export).*(?<!gas)_previous_cost$",
-    "ELECTRICITY_METER_standing_charge": r"(?!.*export).*(?<!gas)_standing_charge$",
+    "OCTOPUS_IMPORT_current_rate": r"(?!.*export).*_current_rate$",
+    "OCTOPUS_IMPORT_next_rate": r"(?!.*export).*_next_rate$",
+    "OCTOPUS_IMPORT_previous_consumption": r"(?!.*export).*(?<!gas)_previous_(?:accumulative_)?consumption$",
+    "OCTOPUS_IMPORT_previous_cost": r"(?!.*export).*(?<!gas)_previous_(?:accumulative_)?cost$",
+    "OCTOPUS_IMPORT_standing_charge": r"(?!.*export).*(?<!gas)_(?:current_)?standing_charge$",
     # Electricity export
-    "EXPORT_METER_export_current_rate": r".*_export_current_rate$",
-    "EXPORT_METER_export_next_rate": r".*_export_next_rate$",
-    "EXPORT_METER_export_previous_consumption": r".*_export_previous_consumption$",
-    "EXPORT_METER_export_previous_cost": r".*_export_previous_cost$",
+    "OCTOPUS_EXPORT_export_current_rate": r".*_export_current_rate$",
+    "OCTOPUS_EXPORT_export_previous_consumption": r".*_export_previous_(?:accumulative_)?consumption$",
+    "OCTOPUS_EXPORT_export_previous_cost": r".*_export_previous_(?:accumulative_)?cost$",
     # Gas
-    "GAS_METER_gas_current_rate": r".*_gas_current_rate$",
-    "GAS_METER_gas_previous_consumption": r".*_gas_previous_consumption$",
-    "GAS_METER_gas_previous_cost": r".*_gas_previous_cost$",
-    "GAS_METER_gas_standing_charge": r".*_gas_standing_charge$",
-    # Entry-level (custom integration)
-    "ENTRY_carbon_correlation": r".*_carbon_correlation$",
-    # Account-level
-    "ACCOUNT_tariff_comparison": r".*_tariff_comparison$",
-    "ACCOUNT_solar_estimate": r".*_solar_estimate$",
+    "OCTOPUS_GAS_gas_previous_cost": r".*(?:gas).*_previous_(?:accumulative_)?cost$",
+    "OCTOPUS_GAS_gas_standing_charge": r".*(?:gas).*_(?:current_)?standing_charge$",
+    # Entry-level (custom integration only)
+    "OCTOPUS_ENTRY_carbon_correlation": r".*_carbon_correlation$",
+    "OCTOPUS_ENTRY_tariff_comparison": r".*_tariff_comparison$",
+    "OCTOPUS_ENTRY_solar_estimate": r".*_solar_estimate$",
 }
 
-PREFIX = "sensor.octopus_energy_"
+# SolaX entity placeholders — prefix discovered from entities matching solax_inverter_*
+SOLAX_MAP = {
+    "battery_state_of_charge": "battery_state_of_charge",
+    "battery_power": "battery_power",
+    "grid_power": "grid_power",
+    "grid_import_export": "grid_import_export",
+    "pv1_power": "pv1_power",
+    "pv2_power": "pv2_power",
+    "today_pv_energy": "today_pv_energy",
+    "total_pv_energy": "total_pv_energy",
+    "total_feed_in_energy": "total_feed_in_energy",
+    "total_consumption": "total_consumption",
+}
 
 
 def load_token() -> str:
@@ -78,7 +86,9 @@ def load_token() -> str:
 def load_template() -> str:
     """Load the dashboard YAML template as a string."""
     template_path = (
-        Path(__file__).resolve().parent.parent / "dashboards" / "octopus-energy.yaml"
+        Path(__file__).resolve().parent.parent
+        / "dashboards"
+        / "energy-intelligence.yaml"
     )
     if not template_path.exists():
         print(f"ERROR: Dashboard template not found at {template_path}")
@@ -86,41 +96,84 @@ def load_template() -> str:
     return template_path.read_text()
 
 
-def discover_entities(entities: list[dict]) -> dict[str, str]:
-    """Map placeholder entity IDs to real entity IDs.
-
-    Returns a dict like:
-        {"sensor.octopus_energy_ELECTRICITY_METER_current_rate":
-         "sensor.octopus_energy_1100009640372_s71fm19329_current_rate"}
-    """
+def discover_octopus_entities(entities: list[dict]) -> dict[str, str]:
+    """Discover Octopus Energy entities by regex matching."""
     oe_sensors = sorted(
         e["entity_id"]
         for e in entities
-        if e["entity_id"].startswith(PREFIX)
+        if e["entity_id"].startswith(OCTOPUS_PREFIX)
     )
 
     if not oe_sensors:
-        print("ERROR: No sensor.octopus_energy_* entities found in HA")
-        sys.exit(1)
+        print("WARNING: No sensor.octopus_energy_* entities found")
+        return {}
 
-    print(f"Found {len(oe_sensors)} Octopus Energy sensor entities:")
-    for eid in oe_sensors:
-        print(f"  {eid}")
-
+    print(f"\nOctopus Energy: found {len(oe_sensors)} entities")
     replacements: dict[str, str] = {}
 
-    for placeholder, pattern in ENTITY_MAP.items():
-        placeholder_full = f"{PREFIX}{placeholder}"
-        matched = False
+    for placeholder, pattern in OCTOPUS_MAP.items():
+        placeholder_full = f"{OCTOPUS_PREFIX}{placeholder}"
         for eid in oe_sensors:
-            bare = eid[len(PREFIX):]
+            bare = eid[len(OCTOPUS_PREFIX):]
             if re.match(pattern, bare):
                 replacements[placeholder_full] = eid
                 print(f"  {placeholder} -> {eid}")
-                matched = True
                 break
-        if not matched:
-            print(f"  {placeholder} -> NOT FOUND (cards will show unavailable)")
+        else:
+            print(f"  {placeholder} -> NOT FOUND")
+
+    return replacements
+
+
+def discover_solax_entities(entities: list[dict]) -> dict[str, str]:
+    """Discover SolaX entities by finding the inverter serial prefix."""
+    # Find entities from solax_local platform (excludes old Modbus entities)
+    solax_sensors = sorted(
+        e["entity_id"]
+        for e in entities
+        if e.get("platform") == "solax_local"
+        and e["entity_id"].startswith("sensor.")
+    )
+
+    # Fallback: match by known sensor pattern
+    if not solax_sensors:
+        solax_sensors = sorted(
+            e["entity_id"]
+            for e in entities
+            if re.match(
+                r"sensor\.solax_inverter_[a-z0-9]+_battery_state_of_charge$",
+                e["entity_id"],
+            )
+        )
+
+    if not solax_sensors:
+        print("\nWARNING: No SolaX custom integration entities found")
+        return {}
+
+    # Extract prefix from a known sensor
+    for eid in solax_sensors:
+        match = re.match(
+            r"(sensor\.solax_inverter_[a-z0-9]+_)battery_state_of_charge$", eid
+        )
+        if match:
+            prefix = match.group(1)
+            break
+    else:
+        # Derive prefix from first entity by removing the last segment
+        first = solax_sensors[0]
+        prefix = first.rsplit("_", 1)[0] + "_"
+    print(f"\nSolaX: found {len(solax_sensors)} entities (prefix: {prefix})")
+
+    all_entity_ids = {e["entity_id"] for e in entities}
+    replacements: dict[str, str] = {}
+    for placeholder, suffix in SOLAX_MAP.items():
+        placeholder_full = f"sensor.SOLAX_{placeholder}"
+        real_id = f"{prefix}{suffix}"
+        if real_id in all_entity_ids:
+            replacements[placeholder_full] = real_id
+            print(f"  SOLAX_{placeholder} -> {real_id}")
+        else:
+            print(f"  SOLAX_{placeholder} -> NOT FOUND ({real_id})")
 
     return replacements
 
@@ -131,9 +184,9 @@ def substitute_template(template: str, replacements: dict[str, str]) -> dict:
     for placeholder, real_id in replacements.items():
         result = result.replace(placeholder, real_id)
 
-    # Warn about any remaining placeholders
+    # Warn about remaining placeholders
     remaining = re.findall(
-        r"sensor\.octopus_energy_(?:ELECTRICITY_METER|EXPORT_METER|GAS_METER|ENTRY|ACCOUNT)_\w+",
+        r"sensor\.(?:octopus_energy_OCTOPUS_\w+|SOLAX_\w+)",
         result,
     )
     if remaining:
@@ -141,7 +194,6 @@ def substitute_template(template: str, replacements: dict[str, str]) -> dict:
         print(f"\nWARNING: {len(unique)} unresolved placeholder(s):")
         for p in unique:
             print(f"  {p}")
-        print("  Cards referencing these entities will show 'unavailable'")
 
     return yaml.safe_load(result)
 
@@ -161,19 +213,18 @@ async def deploy(token: str) -> None:
                 return resp
 
     async with websockets.connect(HA_URL) as ws:
-        # Wait for auth_required
+        # Auth
         auth_req = json.loads(await ws.recv())
         if auth_req.get("type") != "auth_required":
             print(f"ERROR: Expected auth_required, got {auth_req.get('type')}")
             sys.exit(1)
 
-        # Authenticate
         await ws.send(json.dumps({"type": "auth", "access_token": token}))
         auth_resp = json.loads(await ws.recv())
         if auth_resp.get("type") != "auth_ok":
             print(f"ERROR: Authentication failed: {auth_resp}")
             sys.exit(1)
-        print("Authenticated with Home Assistant\n")
+        print("Authenticated with Home Assistant")
 
         # Discover entities
         entity_resp = await send(ws, {"type": "config/entity_registry/list"})
@@ -181,9 +232,13 @@ async def deploy(token: str) -> None:
             print(f"ERROR: Failed to list entities: {entity_resp}")
             sys.exit(1)
 
-        replacements = discover_entities(entity_resp["result"])
+        all_entities = entity_resp["result"]
+        replacements: dict[str, str] = {}
+        replacements.update(discover_octopus_entities(all_entities))
+        replacements.update(discover_solax_entities(all_entities))
+
         if not replacements:
-            print("ERROR: Could not identify any Octopus Energy entities")
+            print("\nERROR: No entities discovered from any integration")
             sys.exit(1)
 
         # Generate final config
