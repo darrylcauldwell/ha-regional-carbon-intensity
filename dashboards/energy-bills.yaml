@@ -149,46 +149,7 @@ views:
           *Tariff comparison data not available.*
           {%- endif %}
 
-      # ── Card 3: Standing vs Energy ─────────────────────────────────────
-      - type: markdown
-        title: Standing vs Energy
-        content: |
-          {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
-          {%- if tc -%}
-          {%- set ns = namespace(current=none) -%}
-          {%- for t in tc -%}
-          {%- if t.is_current -%}{%- set ns.current = t -%}{%- endif -%}
-          {%- endfor -%}
-          {%- if ns.current and ns.current.months | length > 0 -%}
-          {%- set months = ns.current.months -%}
-          {%- set ns2 = namespace(max_total=0) -%}
-          {%- for m in months -%}
-          {%- if m.total_cost > ns2.max_total %}{% set ns2.max_total = m.total_cost %}{% endif -%}
-          {%- endfor -%}
-          {%- set bar_width = 20 %}
-
-          | Month | Standing | Energy | Total | |
-          |-------|----:|----:|----:|-----|
-          {%- for m in months -%}
-          {%- set standing_pct = (m.standing_cost / m.total_cost * 100) if m.total_cost > 0 else 0 -%}
-          {%- set energy_pct = (m.unit_cost / m.total_cost * 100) if m.total_cost > 0 else 0 -%}
-          {%- set total_scale = m.total_cost / ns2.max_total if ns2.max_total > 0 else 0 -%}
-          {%- set standing_blocks = (standing_pct / 100 * bar_width * total_scale) | round(0) | int -%}
-          {%- set energy_blocks = (energy_pct / 100 * bar_width * total_scale) | round(0) | int -%}
-          {%- if standing_blocks == 0 and m.standing_cost > 0 %}{% set standing_blocks = 1 %}{% endif -%}
-          {%- if energy_blocks == 0 and m.unit_cost > 0 %}{% set energy_blocks = 1 %}{% endif %}
-          | {{ m.month }} | £{{ '%.2f' | format(m.standing_cost) }} ({{ standing_pct | round(0) | int }}%) | £{{ '%.2f' | format(m.unit_cost) }} ({{ energy_pct | round(0) | int }}%) | £{{ '%.2f' | format(m.total_cost) }} | <font color="orange">{{ '█' * standing_blocks }}</font><font color="dodgerblue">{{ '█' * energy_blocks }}</font> |
-          {%- endfor %}
-
-          <font color="orange">█</font> Standing charge  <font color="dodgerblue">█</font> Energy usage
-          {%- else %}
-          *No monthly data available yet.*
-          {%- endif -%}
-          {%- else %}
-          *Tariff comparison data not available.*
-          {%- endif %}
-
-      # ── Card 4: Monthly Costs ────────────────────────────────────────────
+      # ── Card 3: Monthly Costs ────────────────────────────────────────────
       - type: markdown
         title: Monthly Costs
         content: |
