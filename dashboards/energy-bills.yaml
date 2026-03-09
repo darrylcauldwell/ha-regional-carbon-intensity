@@ -25,7 +25,7 @@ views:
     cards:
       # ── Card 1: Cheapest Tariff? Last Month ──────────────────────────────
       - type: markdown
-        title: Best Tariff (Month)
+        title: Optimal Tariff (Month)
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
@@ -88,7 +88,7 @@ views:
 
       # ── Card 2: Cheapest Tariff? Last 6 Months ───────────────────────────
       - type: markdown
-        title: Best Tariff (Six-Month)
+        title: Optimal Tariff (Six-Month)
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
@@ -106,7 +106,7 @@ views:
           {%- set ns2 = namespace(current_total=0, cheapest_total=0, cheapest_wins=0, current_wins=0) %}
           Your tariff: **{{ ns.current.display_name }}**
 
-          | Month | You Paid | Cheapest | Diff | Best Tariff |
+          | Month | You Paid | Cheapest | Diff | Optimal Tariff |
           |-------|----:|----:|----:|-----|
           {%- for i in range(month_count) -%}
           {%- set abs_idx = start_idx + i -%}
@@ -283,7 +283,7 @@ views:
           {%- if ns.current and ns.current.months | length > 0 -%}
           {%- set months = ns.current.months %}
 
-          | Month | You Paid | Cheapest | Saving | Best Tariff |
+          | Month | You Paid | Cheapest | Saving | Optimal Tariff |
           |-------|----:|----:|----:|-----|
           {%- set ns3 = namespace(total_current=0, total_cheapest_sum=0) -%}
           {%- for m in months -%}
