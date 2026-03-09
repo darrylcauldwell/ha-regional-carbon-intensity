@@ -112,7 +112,7 @@ views:
           {%- set abs_idx = start_idx + i -%}
           {%- set cm = months_slice[i] -%}
           {%- set current_cost = cm.total_cost -%}
-          {%- set ns3 = namespace(cheapest=999, cheapest_name='', any_cheaper=false) -%}
+          {%- set ns3 = namespace(cheapest=current_cost, cheapest_name=ns.current.display_name) -%}
           {%- for t in tc -%}
           {%- if not t.is_current and t.months | length > abs_idx -%}
           {%- set alt_cost = t.months[abs_idx].total_cost -%}
@@ -122,16 +122,12 @@ views:
           {%- endif -%}
           {%- endif -%}
           {%- endfor -%}
-          {%- if ns3.cheapest < 999 -%}
           {%- set diff = current_cost - ns3.cheapest -%}
           {%- set ns2.current_total = ns2.current_total + current_cost -%}
           {%- set ns2.cheapest_total = ns2.cheapest_total + ns3.cheapest -%}
           {%- if diff > 0.01 -%}{%- set ns2.cheapest_wins = ns2.cheapest_wins + 1 -%}
           {%- else -%}{%- set ns2.current_wins = ns2.current_wins + 1 -%}{%- endif %}
           | {{ cm.month }} | £{{ '%.2f' | format(current_cost) }} | £{{ '%.2f' | format(ns3.cheapest) }} | {%- if diff > 0.01 %} <font color="red">+£{{ '%.2f' | format(diff) }}</font>{%- elif diff < -0.01 %} <font color="green">-£{{ '%.2f' | format(diff | abs) }}</font>{%- else %} £0.00{%- endif %} | {{ ns3.cheapest_name }} |
-          {%- else %}
-          | {{ cm.month }} | £{{ '%.2f' | format(current_cost) }} | *n/a* | — | — |
-          {%- endif -%}
           {%- endfor -%}
           {%- set total_diff = ns2.current_total - ns2.cheapest_total %}
           | **Total** | **£{{ '%.2f' | format(ns2.current_total) }}** | **£{{ '%.2f' | format(ns2.cheapest_total) }}** | {%- if total_diff > 0.01 %} **<font color="red">+£{{ '%.2f' | format(total_diff) }}</font>**{%- elif total_diff < -0.01 %} **<font color="green">-£{{ '%.2f' | format(total_diff | abs) }}</font>**{%- else %} **£0.00**{%- endif %} | |
@@ -287,11 +283,12 @@ views:
           {%- if ns.current and ns.current.months | length > 0 -%}
           {%- set months = ns.current.months %}
 
-          | Month | Current | Cheapest Alt | Saving | Best Tariff |
+          | Month | You Paid | Cheapest | Saving | Best Tariff |
           |-------|----:|----:|----:|-----|
+          {%- set ns3 = namespace(total_current=0, total_cheapest_sum=0) -%}
           {%- for m in months -%}
           {%- set current_cost = m.total_cost -%}
-          {%- set ns2 = namespace(cheapest=999, cheapest_name='') -%}
+          {%- set ns2 = namespace(cheapest=current_cost, cheapest_name=ns.current.display_name) -%}
           {%- for t in tc -%}
           {%- if not t.is_current and t.months | length > loop.parent.index0 -%}
           {%- set alt_cost = t.months[loop.parent.index0].total_cost -%}
@@ -301,32 +298,13 @@ views:
           {%- endif -%}
           {%- endif -%}
           {%- endfor -%}
-          {%- if ns2.cheapest < 999 -%}
-          {%- set saving = current_cost - ns2.cheapest %}
-          | {{ m.month }} | £{{ '%.2f' | format(current_cost) }} | £{{ '%.2f' | format(ns2.cheapest) }} | {%- if saving > 0 %} <font color="red">+£{{ '%.2f' | format(saving) }}</font>{%- elif saving < 0 %} <font color="green">-£{{ '%.2f' | format(saving | abs) }}</font>{%- else %} £0.00{%- endif %} | {{ ns2.cheapest_name }} |
-          {%- else %}
-          | {{ m.month }} | £{{ '%.2f' | format(current_cost) }} | *n/a* | — | — |
-          {%- endif -%}
-          {%- endfor -%}
-          {%- set ns3 = namespace(total_current=0, total_cheapest_sum=0) -%}
-          {%- for m in months -%}
-          {%- set ns3.total_current = ns3.total_current + m.total_cost -%}
-          {%- set ns4 = namespace(cheapest=999) -%}
-          {%- for t in tc -%}
-          {%- if not t.is_current and t.months | length > loop.parent.index0 -%}
-          {%- if t.months[loop.parent.index0].total_cost < ns4.cheapest -%}
-          {%- set ns4.cheapest = t.months[loop.parent.index0].total_cost -%}
-          {%- endif -%}
-          {%- endif -%}
-          {%- endfor -%}
-          {%- if ns4.cheapest < 999 -%}
-          {%- set ns3.total_cheapest_sum = ns3.total_cheapest_sum + ns4.cheapest -%}
-          {%- else -%}
-          {%- set ns3.total_cheapest_sum = ns3.total_cheapest_sum + m.total_cost -%}
-          {%- endif -%}
+          {%- set saving = current_cost - ns2.cheapest -%}
+          {%- set ns3.total_current = ns3.total_current + current_cost -%}
+          {%- set ns3.total_cheapest_sum = ns3.total_cheapest_sum + ns2.cheapest %}
+          | {{ m.month }} | £{{ '%.2f' | format(current_cost) }} | £{{ '%.2f' | format(ns2.cheapest) }} | {%- if saving > 0.01 %} <font color="red">+£{{ '%.2f' | format(saving) }}</font>{%- elif saving < -0.01 %} <font color="green">-£{{ '%.2f' | format(saving | abs) }}</font>{%- else %} £0.00{%- endif %} | {{ ns2.cheapest_name }} |
           {%- endfor -%}
           {%- set total_saving = ns3.total_current - ns3.total_cheapest_sum %}
-          | **Total** | **£{{ '%.2f' | format(ns3.total_current) }}** | **£{{ '%.2f' | format(ns3.total_cheapest_sum) }}** | {%- if total_saving > 0 %} **<font color="red">+£{{ '%.2f' | format(total_saving) }}</font>**{%- elif total_saving < 0 %} **<font color="green">-£{{ '%.2f' | format(total_saving | abs) }}</font>**{%- else %} **£0.00**{%- endif %} | |
+          | **Total** | **£{{ '%.2f' | format(ns3.total_current) }}** | **£{{ '%.2f' | format(ns3.total_cheapest_sum) }}** | {%- if total_saving > 0.01 %} **<font color="red">+£{{ '%.2f' | format(total_saving) }}</font>**{%- elif total_saving < -0.01 %} **<font color="green">-£{{ '%.2f' | format(total_saving | abs) }}</font>**{%- else %} **£0.00**{%- endif %} | |
           {%- else %}
           *No monthly data available yet.*
           {%- endif -%}
