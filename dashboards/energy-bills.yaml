@@ -104,6 +104,7 @@ views:
           {%- set month_count = months_slice | length -%}
           {%- if month_count > 0 -%}
           {%- set ns2 = namespace(current_total=0, cheapest_total=0, cheapest_wins=0, current_wins=0) %}
+          Your tariff: **{{ ns.current.display_name }}**
 
           | Month | You Paid | Cheapest | Diff | Best Tariff |
           |-------|----:|----:|----:|-----|
