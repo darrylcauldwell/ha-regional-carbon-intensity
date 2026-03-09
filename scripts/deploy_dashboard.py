@@ -56,6 +56,8 @@ ENTITY_MAP = {
     "GAS_METER_gas_previous_consumption": r".*_gas_previous_consumption$",
     "GAS_METER_gas_previous_cost": r".*_gas_previous_cost$",
     "GAS_METER_gas_standing_charge": r".*_gas_standing_charge$",
+    # Entry-level (custom integration)
+    "ENTRY_carbon_correlation": r".*_carbon_correlation$",
     # Account-level
     "ACCOUNT_tariff_comparison": r".*_tariff_comparison$",
     "ACCOUNT_solar_estimate": r".*_solar_estimate$",
@@ -131,7 +133,7 @@ def substitute_template(template: str, replacements: dict[str, str]) -> dict:
 
     # Warn about any remaining placeholders
     remaining = re.findall(
-        r"sensor\.octopus_energy_(?:ELECTRICITY_METER|EXPORT_METER|GAS_METER|ACCOUNT)_\w+",
+        r"sensor\.octopus_energy_(?:ELECTRICITY_METER|EXPORT_METER|GAS_METER|ENTRY|ACCOUNT)_\w+",
         result,
     )
     if remaining:
