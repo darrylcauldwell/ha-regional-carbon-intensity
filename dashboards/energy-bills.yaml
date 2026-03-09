@@ -7,12 +7,13 @@
 # by scripts/deploy_energy_bills.py at deploy time.
 #
 # Cards:
-#   1. Last Month Tariff Ranking — was I on the cheapest tariff?
-#   2. Cost Breakdown — standing charge vs energy usage per month
-#   3. Monthly Electricity Costs — per-month cost table with colour coding
-#   4. Month-on-Month Change — delta vs previous month
-#   5. Tariff Savings by Month — current vs cheapest alternative
-#   6. Period Summary — headline stats across all months
+#   1. Cheapest Tariff? Last Month
+#   2. Cheapest Tariff? Last 6 Months
+#   3. Standing vs Energy
+#   4. Monthly Costs
+#   5. Month-on-Month
+#   6. Savings by Month
+#   7. Summary
 #
 # NOTE: Only electricity import data is available historically via tariff
 # comparison. Export revenue and gas costs have no monthly history source.
@@ -22,9 +23,9 @@ views:
     path: energy-bills
     icon: mdi:receipt-text
     cards:
-      # ── Card 1: Last Month Tariff Ranking ────────────────────────────────
+      # ── Card 1: Cheapest Tariff? Last Month ──────────────────────────────
       - type: markdown
-        title: Was I On The Cheapest Tariff?
+        title: Cheapest Tariff? — Last Month
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
@@ -85,9 +86,75 @@ views:
           *Tariff comparison data not available.*
           {%- endif %}
 
-      # ── Card 2: Cost Breakdown — Standing vs Energy ──────────────────────
+      # ── Card 2: Cheapest Tariff? Last 6 Months ───────────────────────────
       - type: markdown
-        title: Cost Breakdown — Standing vs Energy
+        title: Cheapest Tariff? — Last 6 Months
+        content: |
+          {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
+          {%- if tc -%}
+          {%- set ns = namespace(current=none) -%}
+          {%- for t in tc -%}
+          {%- if t.is_current -%}{%- set ns.current = t -%}{%- endif -%}
+          {%- endfor -%}
+          {%- if ns.current and ns.current.months | length > 1 -%}
+          {%- set all_months = ns.current.months -%}
+          {%- set end_idx = all_months | length - 1 -%}
+          {%- set start_idx = [end_idx - 6, 0] | max -%}
+          {%- set months_slice = all_months[start_idx:end_idx] -%}
+          {%- set month_count = months_slice | length -%}
+          {%- if month_count > 0 -%}
+          {%- set ns2 = namespace(current_total=0, cheapest_total=0, cheapest_wins=0, current_wins=0) %}
+
+          | Month | You Paid | Cheapest | Diff | Best Tariff |
+          |-------|----:|----:|----:|-----|
+          {%- for i in range(month_count) -%}
+          {%- set abs_idx = start_idx + i -%}
+          {%- set cm = months_slice[i] -%}
+          {%- set current_cost = cm.total_cost -%}
+          {%- set ns3 = namespace(cheapest=999, cheapest_name='', any_cheaper=false) -%}
+          {%- for t in tc -%}
+          {%- if not t.is_current and t.months | length > abs_idx -%}
+          {%- set alt_cost = t.months[abs_idx].total_cost -%}
+          {%- if alt_cost < ns3.cheapest -%}
+          {%- set ns3.cheapest = alt_cost -%}
+          {%- set ns3.cheapest_name = t.display_name -%}
+          {%- endif -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {%- if ns3.cheapest < 999 -%}
+          {%- set diff = current_cost - ns3.cheapest -%}
+          {%- set ns2.current_total = ns2.current_total + current_cost -%}
+          {%- set ns2.cheapest_total = ns2.cheapest_total + ns3.cheapest -%}
+          {%- if diff > 0.01 -%}{%- set ns2.cheapest_wins = ns2.cheapest_wins + 1 -%}
+          {%- else -%}{%- set ns2.current_wins = ns2.current_wins + 1 -%}{%- endif %}
+          | {{ cm.month }} | £{{ '%.2f' | format(current_cost) }} | £{{ '%.2f' | format(ns3.cheapest) }} | {%- if diff > 0.01 %} <font color="red">+£{{ '%.2f' | format(diff) }}</font>{%- elif diff < -0.01 %} <font color="green">-£{{ '%.2f' | format(diff | abs) }}</font>{%- else %} £0.00{%- endif %} | {{ ns3.cheapest_name }} |
+          {%- else %}
+          | {{ cm.month }} | £{{ '%.2f' | format(current_cost) }} | *n/a* | — | — |
+          {%- endif -%}
+          {%- endfor -%}
+          {%- set total_diff = ns2.current_total - ns2.cheapest_total %}
+          | **Total** | **£{{ '%.2f' | format(ns2.current_total) }}** | **£{{ '%.2f' | format(ns2.cheapest_total) }}** | {%- if total_diff > 0.01 %} **<font color="red">+£{{ '%.2f' | format(total_diff) }}</font>**{%- elif total_diff < -0.01 %} **<font color="green">-£{{ '%.2f' | format(total_diff | abs) }}</font>**{%- else %} **£0.00**{%- endif %} | |
+
+          {%- if ns2.current_wins >= month_count %}
+          <font color="green">**You were on the cheapest tariff every month.**</font>
+          {%- elif ns2.current_wins > ns2.cheapest_wins %}
+          <font color="green">**Cheapest {{ ns2.current_wins }}/{{ month_count }} months.**</font> An alternative was cheaper {{ ns2.cheapest_wins }} month{{ 's' if ns2.cheapest_wins != 1 }}.
+          {%- elif ns2.cheapest_wins > 0 %}
+          <font color="red">**An alternative was cheaper {{ ns2.cheapest_wins }}/{{ month_count }} months**</font> — £{{ '%.2f' | format(total_diff) }} overpaid.
+          {%- endif %}
+          {%- else %}
+          *Not enough complete months for 6-month comparison.*
+          {%- endif -%}
+          {%- else %}
+          *Need at least 2 months of data.*
+          {%- endif -%}
+          {%- else %}
+          *Tariff comparison data not available.*
+          {%- endif %}
+
+      # ── Card 3: Standing vs Energy ─────────────────────────────────────
+      - type: markdown
+        title: Standing vs Energy
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
@@ -124,9 +191,9 @@ views:
           *Tariff comparison data not available.*
           {%- endif %}
 
-      # ── Card 3: Monthly Electricity Costs ──────────────────────────────
+      # ── Card 4: Monthly Costs ────────────────────────────────────────────
       - type: markdown
-        title: Monthly Electricity Costs
+        title: Monthly Costs
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
@@ -172,9 +239,9 @@ views:
           *Tariff comparison data not available.*
           {%- endif %}
 
-      # ── Card 4: Month-on-Month Change ──────────────────────────────────
+      # ── Card 5: Month-on-Month ───────────────────────────────────────────
       - type: markdown
-        title: Month-on-Month Change
+        title: Month-on-Month
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
@@ -206,9 +273,9 @@ views:
           *Tariff comparison data not available.*
           {%- endif %}
 
-      # ── Card 5: Tariff Savings by Month ────────────────────────────────
+      # ── Card 6: Savings by Month ─────────────────────────────────────────
       - type: markdown
-        title: Tariff Savings by Month
+        title: Savings by Month
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
@@ -266,9 +333,9 @@ views:
           *Tariff comparison data not available.*
           {%- endif %}
 
-      # ── Card 6: Period Summary ─────────────────────────────────────────
+      # ── Card 7: Summary ──────────────────────────────────────────────────
       - type: markdown
-        title: Period Summary
+        title: Summary
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- set total_kwh = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'total_consumption_kwh') -%}
