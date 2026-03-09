@@ -7,13 +7,11 @@
 # by scripts/deploy_energy_bills.py at deploy time.
 #
 # Cards:
-#   1. Cheapest Tariff? Last Month
-#   2. Cheapest Tariff? Last 6 Months
-#   3. Standing vs Energy
-#   4. Monthly Summary
+#   1. Optimal Tariff (Month)
+#   2. Optimal Tariff (Six-Month)
+#   3. Monthly Summary
+#   4. Daily Cost Breakdown
 #   5. Trends
-#   6. Savings by Month
-#   7. Summary
 #
 # NOTE: Only electricity import data is available historically via tariff
 # comparison. Export revenue and gas costs have no monthly history source.
@@ -25,8 +23,8 @@ views:
     cards:
       # ── Card 1: Cheapest Tariff? Last Month ──────────────────────────────
       - type: markdown
-        title: Optimal Tariff (Month)
         content: |
+          ### Optimal Tariff (Month)
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
           {%- set ns = namespace(current=none, last_idx=-1) -%}
@@ -88,8 +86,8 @@ views:
 
       # ── Card 2: Cheapest Tariff? Last 6 Months ───────────────────────────
       - type: markdown
-        title: Optimal Tariff (Six-Month)
         content: |
+          ### Optimal Tariff (Six-Month)
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
           {%- set ns = namespace(current=none) -%}
@@ -151,8 +149,8 @@ views:
 
       # ── Card 3: Monthly Summary ────────────────────────────────────────────
       - type: markdown
-        title: Monthly Summary
         content: |
+          ### Monthly Summary
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
           {%- set ns = namespace(current=none) -%}
@@ -197,10 +195,90 @@ views:
           *Tariff comparison data not available.*
           {%- endif %}
 
+      # ── Card 4: Daily Cost Breakdown ──────────────────────────────────
+      - type: markdown
+        content: |
+          {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
+          {%- if tc -%}
+          {%- set ns = namespace(current=none) -%}
+          {%- for t in tc -%}
+          {%- if t.is_current -%}{%- set ns.current = t -%}{%- endif -%}
+          {%- endfor -%}
+          {%- if ns.current and ns.current.months | length > 0 -%}
+          {%- set ns_m = namespace(month=none) -%}
+          {%- for m in ns.current.months | reverse -%}
+          {%- if ns_m.month is none and m.slots is defined and m.slots | length > 0 and m.days_with_data == m.days_in_month -%}
+          {%- set ns_m.month = m -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {%- if ns_m.month is none -%}
+          {%- for m in ns.current.months | reverse -%}
+          {%- if ns_m.month is none and m.slots is defined and m.slots | length > 0 -%}
+          {%- set ns_m.month = m -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {%- endif -%}
+          {%- set month = ns_m.month -%}
+          {%- if month is not none -%}
+          {%- set sorted_slots = month.slots | sort(attribute='start') -%}
+          {%- set ns2 = namespace(days=[], min_cost=999, max_cost=0) -%}
+          {%- set ns_pre = namespace(day='', day_cost=0) -%}
+          {%- for s in sorted_slots -%}
+          {%- set d = s.start[:10] -%}
+          {%- if d != ns_pre.day -%}
+          {%- if ns_pre.day != '' -%}
+          {%- set ns2.days = ns2.days + [ns_pre.day] -%}
+          {%- if ns_pre.day_cost < ns2.min_cost -%}{%- set ns2.min_cost = ns_pre.day_cost -%}{%- endif -%}
+          {%- if ns_pre.day_cost > ns2.max_cost -%}{%- set ns2.max_cost = ns_pre.day_cost -%}{%- endif -%}
+          {%- endif -%}
+          {%- set ns_pre.day = d -%}
+          {%- set ns_pre.day_cost = 0 -%}
+          {%- endif -%}
+          {%- set ns_pre.day_cost = ns_pre.day_cost + s.cost -%}
+          {%- endfor -%}
+          {%- if ns_pre.day != '' -%}
+          {%- set ns2.days = ns2.days + [ns_pre.day] -%}
+          {%- if ns_pre.day_cost < ns2.min_cost -%}{%- set ns2.min_cost = ns_pre.day_cost -%}{%- endif -%}
+          {%- if ns_pre.day_cost > ns2.max_cost -%}{%- set ns2.max_cost = ns_pre.day_cost -%}{%- endif -%}
+          {%- endif -%}
+          {%- set spread = ns2.max_cost - ns2.min_cost -%}
+          {%- set green_thresh = ns2.min_cost + spread * 0.33 -%}
+          {%- set red_thresh = ns2.min_cost + spread * 0.66 -%}
+          {%- set month_names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] -%}
+          {%- set month_name = month_names[month.month.split('-')[1] | int - 1] %}
+          ### Daily Cost Breakdown — {{ month_name }} {{ month.month.split('-')[0] }}
+
+          | Date | kWh | Avg Rate | Cost |
+          |------|----:|----:|----:|
+          {%- for day in ns2.days | sort -%}
+          {%- set ns3 = namespace(kwh=0, cost=0, rate_sum=0, count=0) -%}
+          {%- for s in sorted_slots -%}
+          {%- if s.start[:10] == day -%}
+          {%- set ns3.kwh = ns3.kwh + s.consumption_kwh -%}
+          {%- set ns3.cost = ns3.cost + s.cost -%}
+          {%- set ns3.rate_sum = ns3.rate_sum + s.rate -%}
+          {%- set ns3.count = ns3.count + 1 -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {%- set avg_r = ns3.rate_sum / ns3.count if ns3.count > 0 else 0 %}
+          | {{ day }} | {{ '%.1f' | format(ns3.kwh) }} | {{ '%.1f' | format(avg_r) }}p | {%- if ns3.cost >= red_thresh %} <font color="red">£{{ '%.2f' | format(ns3.cost) }}</font>{%- elif ns3.cost <= green_thresh %} <font color="green">£{{ '%.2f' | format(ns3.cost) }}</font>{%- else %} <font color="orange">£{{ '%.2f' | format(ns3.cost) }}</font>{%- endif %} |
+          {%- endfor %}
+          | **Total** | **{{ '%.1f' | format(month.consumption_kwh) }}** | | **£{{ '%.2f' | format(month.total_cost) }}** |
+
+          *<font color="green">Green</font> = cheapest third, <font color="orange">Orange</font> = middle, <font color="red">Red</font> = most expensive third*
+          *Cross-reference total with your Octopus bill for {{ month.month }}*
+          {%- else %}
+          *No half-hourly slot data available yet. Data backfills over several cycles after restart (~10 min per cycle, 3 chunks of 14 days each).*
+          {%- endif -%}
+          {%- endif -%}
+          {%- else %}
+          *Tariff comparison data not available.*
+          {%- endif %}
+
       # ── Card 5: Trends ───────────────────────────────────────────
       - type: markdown
-        title: Trends
         content: |
+          ### Trends
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
           {%- set ns = namespace(current=none) -%}
