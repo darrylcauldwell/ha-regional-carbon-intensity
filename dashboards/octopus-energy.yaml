@@ -81,7 +81,6 @@ views:
       - type: vertical-stack
         cards:
           - type: markdown
-            title: Yesterday's Summary
             content: |
               {%- set import_cost = states('sensor.octopus_energy_ELECTRICITY_METER_previous_cost') -%}
               {%- set has_data = import_cost not in ['unknown', 'unavailable'] -%}
@@ -98,7 +97,7 @@ views:
               {%- set gas_standing = states('sensor.octopus_energy_GAS_METER_gas_standing_charge') | float(0) / 100 -%}
               {%- set net = ic - export_revenue + gas_cost + elec_standing + gas_standing -%}
               {%- set carbon = state_attr('sensor.octopus_energy_ENTRY_carbon_correlation', 'carbon_summary') %}
-              ### Net daily cost: £{{ '%.2f' | format(net) }}
+              ### Yesterday's Summary — £{{ '%.2f' | format(net) }} net
 
               | | Amount |
               |---|---:|
@@ -130,8 +129,8 @@ views:
               {%- endif %}
 
           - type: markdown
-            title: Yesterday's Half-Hourly Breakdown
             content: |
+              ### Yesterday's Half-Hourly Breakdown
               {%- set charges = state_attr('sensor.octopus_energy_ELECTRICITY_METER_previous_cost', 'charges') -%}
               {%- if charges and charges | length > 0 -%}
               {%- set ns = namespace(total_kwh=0, total_cost=0, total_co2=0, max_cost=0, max_slot='', min_rate=999, min_slot='', max_rate=0, max_rate_slot='', min_usage=999, max_usage=0, min_co2=999, max_co2=0) -%}
@@ -172,8 +171,8 @@ views:
       - type: vertical-stack
         cards:
           - type: markdown
-            title: Yesterday's Carbon Footprint
             content: |
+              ### Yesterday's Carbon Footprint
               {%- set carbon = state_attr('sensor.octopus_energy_ENTRY_carbon_correlation', 'carbon_summary') -%}
               {%- if carbon -%}
               {%- set co2_kg = carbon.total_grams_co2 / 1000 %}
@@ -189,8 +188,8 @@ views:
               {%- endif %}
 
           - type: markdown
-            title: Upcoming Rates
             content: |
+              ### Upcoming Rates
               {%- set rates = state_attr('sensor.octopus_energy_ELECTRICITY_METER_current_rate', 'upcoming_rates') -%}
               {%- if rates and rates | length >= 4 -%}
               {%- set ns = namespace(min_rate=999, max_rate=-999, best_avg=999, best_start='', best_end='') -%}
@@ -240,8 +239,8 @@ views:
               content: "## Solar Forecast"
 
             - type: markdown
-              title: Today's Solar Estimate
               content: |
+                ### Today's Solar Estimate
                 {%- set solar = states('sensor.octopus_energy_ACCOUNT_solar_estimate') %}
                 **{{ solar }} kWh** estimated today
                 {%- set estimates = state_attr('sensor.octopus_energy_ACCOUNT_solar_estimate', 'hourly_estimates') -%}
