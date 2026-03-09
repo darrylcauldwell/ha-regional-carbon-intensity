@@ -25,7 +25,7 @@ views:
     cards:
       # ── Card 1: Cheapest Tariff? Last Month ──────────────────────────────
       - type: markdown
-        title: Cheapest Tariff? — Last Month
+        title: Best Tariff (Month)
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
@@ -88,7 +88,7 @@ views:
 
       # ── Card 2: Cheapest Tariff? Last 6 Months ───────────────────────────
       - type: markdown
-        title: Cheapest Tariff? — Last 6 Months
+        title: Best Tariff (Six-Month)
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
