@@ -10,7 +10,7 @@
 #   1. Cheapest Tariff? Last Month
 #   2. Cheapest Tariff? Last 6 Months
 #   3. Standing vs Energy
-#   4. Monthly Costs
+#   4. Monthly Summary
 #   5. Trends
 #   6. Savings by Month
 #   7. Summary
@@ -149,9 +149,9 @@ views:
           *Tariff comparison data not available.*
           {%- endif %}
 
-      # ── Card 3: Monthly Costs ────────────────────────────────────────────
+      # ── Card 3: Monthly Summary ────────────────────────────────────────────
       - type: markdown
-        title: Monthly Costs
+        title: Monthly Summary
         content: |
           {%- set tc = state_attr('sensor.octopus_energy_ACCOUNT_tariff_comparison', 'tariffs') -%}
           {%- if tc -%}
